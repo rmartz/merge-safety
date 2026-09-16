@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  packages: read # resolve @rmartz-scoped runtime deps from GitHub Packages
 
 # Per-ref concurrency: a new push to a branch cancels its in-flight run, but
 # main is never cancelled (each push to the default branch runs to completion).
