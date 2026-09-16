@@ -46,4 +46,4 @@ merge itself.
 - **[Setting up merge-safety in a consuming repo](consuming.md)** — the caller
   workflow and its permissions.
 - **[The extraction migration](migration.md)** — the split out of
-  `@rmartz/pr-review` and the open decisions that finalize the CLI.
+  `@rmartz/pr-review` and the locked layer-0 dependency decisions behind the CLI.

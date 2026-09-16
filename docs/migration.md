@@ -29,23 +29,29 @@ them.
 
 ## The layer-0 dependencies
 
-Two dependencies come along, and how each is satisfied is an **open decision**
-resolved during the code migration:
+Two dependencies came along, and how each is satisfied was decided during the
+code migration. **Both decisions are now locked:**
 
 - **`@rmartz/agent-runtime` → only `boundedRun`** (a git-subprocess wrapper used
-  in `-facts.ts`). This is the same ~67-line helper repo-hygiene inlined
-  (`src/lib/bounded-subprocess.ts`), so **inlining is the expected path** —
-  trivial to copy, no dependency edge.
+  in `-facts.ts`). This is the same ~67-line helper repo-hygiene inlined, so
+  **inlined** as `src/lib/bounded-subprocess.ts` — no dependency edge.
+  _(Done: [#2](https://github.com/rmartz/merge-safety/issues/2) / PR #7.)_
 - **`@rmartz/github` → `ghCall`, `resolveRepoTarget`, `addLabels`, `removeLabel`**
-  (the gh REST+GraphQL transport plus label helpers). This is the substantial
-  one — the real **depend-vs-inline** call. `ghCall` pulls transport machinery,
-  so **depending on the published `@rmartz/github`** (install-auth'd like
-  repo-hygiene's own deps) is the lighter path; inlining the ~4-function surface
-  is the alternative. Decide during migration and record the choice here.
+  (the gh REST+GraphQL transport plus label helpers). The substantial call —
+  **DEPEND on the published `@rmartz/github`, pinned `^0.4.2`.** `ghCall` pulls
+  the REST+GraphQL transport we don't want to reproduce, and inlining is heavier
+  here than for repo-hygiene (whose github surface was smaller), so depending is
+  the lighter path. `@rmartz/github` is **public** on GitHub Packages, so the
+  reusable workflow's `setup-node` install resolves it transitively with the
+  built-in `GITHUB_TOKEN` — no consumer PAT. It is a `dependencies` entry in
+  `package.json`, imported by the `ai-merge-safety` bin.
+  _(Decided in [#4](https://github.com/rmartz/merge-safety/issues/4#issuecomment-5699755986);
+  end-to-end install is verified at [#5](https://github.com/rmartz/merge-safety/issues/5).)_
 
-Until that lands, `src/` carries only the package's stable public contract (the
-[check-run name](check-run-contract.md) and the command surface) so the
-[reusable workflow](consuming.md) can be wired end to end.
+The `merge-safety.ts` / `merge-safety-facts.ts` slice and the `ai-merge-safety`
+bin now live in `src/` alongside the package's stable public contract (the
+[check-run name](check-run-contract.md) and the command surface), so the
+[reusable workflow](consuming.md) is wired end to end.
 
 ## The ai-tools-side cutover (coordinated, not owned here)
 
