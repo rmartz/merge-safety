@@ -42,7 +42,7 @@ on:
         description: '@rmartz/merge-safety version to install (pinned to this release).'
         type: string
         required: false
-        default: 0.0.0 # x-release-please-version
+        default: 0.1.0 # x-release-please-version
       node-version:
         description: Node.js version to run under.
         type: string
