@@ -29,23 +29,30 @@ them.
 
 ## The layer-0 dependencies
 
-Two dependencies come along, and how each is satisfied is an **open decision**
-resolved during the code migration:
+Two dependencies came along, and how each is satisfied was decided during the
+code migration. **Both decisions are now locked:**
 
 - **`@rmartz/agent-runtime` → only `boundedRun`** (a git-subprocess wrapper used
-  in `-facts.ts`). This is the same ~67-line helper repo-hygiene inlined
-  (`src/lib/bounded-subprocess.ts`), so **inlining is the expected path** —
-  trivial to copy, no dependency edge.
+  in `-facts.ts`). This is the same ~67-line helper repo-hygiene inlined, so
+  **inlined** as `src/lib/bounded-subprocess.ts` — no dependency edge.
+  _(Done: [#2](https://github.com/rmartz/merge-safety/issues/2) / PR #7.)_
 - **`@rmartz/github` → `ghCall`, `resolveRepoTarget`, `addLabels`, `removeLabel`**
-  (the gh REST+GraphQL transport plus label helpers). This is the substantial
-  one — the real **depend-vs-inline** call. `ghCall` pulls transport machinery,
-  so **depending on the published `@rmartz/github`** (install-auth'd like
-  repo-hygiene's own deps) is the lighter path; inlining the ~4-function surface
-  is the alternative. Decide during migration and record the choice here.
+  (the gh REST+GraphQL transport plus label helpers). The substantial call —
+  **INLINED** as `src/lib/github.ts`, ported from `@rmartz/github@0.4.2`, keeping
+  this package **zero-runtime-dependency** like repo-hygiene. The initial decision
+  was to _depend_ on the published package, but depending pulled in GitHub Packages
+  install auth (a scoped `.npmrc` + `NODE_AUTH_TOKEN` in CI, and a token for local
+  lockfile generation); inlining the ~200-line surface removes that friction
+  entirely — and `ghCall` already runs its git subprocess through our own inlined
+  `boundedRun`, so there is no `@rmartz/*` edge left at all. The port carries a
+  provenance header flagging it as a traceable divergence: check upstream
+  `@rmartz/github` for transport/rate-limit fixes when touching that file.
+  _(Superseded depend decision: [#4](https://github.com/rmartz/merge-safety/issues/4#issuecomment-5699755986).)_
 
-Until that lands, `src/` carries only the package's stable public contract (the
-[check-run name](check-run-contract.md) and the command surface) so the
-[reusable workflow](consuming.md) can be wired end to end.
+The `merge-safety.ts` / `merge-safety-facts.ts` slice and the `ai-merge-safety`
+bin now live in `src/` alongside the package's stable public contract (the
+[check-run name](check-run-contract.md) and the command surface), so the
+[reusable workflow](consuming.md) is wired end to end.
 
 ## The ai-tools-side cutover (coordinated, not owned here)
 
