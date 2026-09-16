@@ -29,9 +29,15 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          # GITHUB_TOKEN-created PRs don't trigger CI. Set a RELEASE_PLEASE_PAT
-          # secret (contents + pull-requests write) to run CI on the release PR;
-          # falls back to the built-in token otherwise.
+          # RELEASE_PLEASE_PAT is REQUIRED here, not optional. release-please's
+          # extra-files bumps the pinned version inside the reusable workflow
+          # .github/workflows/merge-safety.yml, and the built-in GITHUB_TOKEN cannot
+          # write files under .github/workflows/ — it lacks the `workflow` scope, so
+          # GitHub rejects the tree write (a disguised 404, which release-please
+          # reports as "Error adding to tree"). Provide a PAT with `repo` + `workflow`
+          # scope. It also lets the release PR trigger CI, which GITHUB_TOKEN-created
+          # PRs don't. The `|| github.token` fallback only keeps this file valid when
+          # the secret is absent; the release itself fails until the secret exists.
           token: ${{ secrets.RELEASE_PLEASE_PAT || github.token }}
 
   publish:
