@@ -7,7 +7,11 @@
 //               auto-merge until each PR re-clears against the new base.
 // All judgment lives in the library; this only parses args and talks to `gh`.
 import { ghCall, resolveRepoTarget, addLabels, removeLabel } from '@rmartz/github';
-import { MERGE_SAFETY_CHECK_NAME, isMergeSafetyCommand, type MergeSafetyCommand } from '../index.js';
+import {
+  MERGE_SAFETY_CHECK_NAME,
+  isMergeSafetyCommand,
+  type MergeSafetyCommand,
+} from '../index.js';
 import {
   evaluateMergeSafety,
   errorMergeSafetyDecision,
@@ -47,7 +51,12 @@ function usage(): never {
 function parse(argv: string[]): Args {
   const mode = argv[0];
   if (!isMergeSafetyCommand(mode)) usage();
-  const args: Args = { mode, baseRef: 'origin/main', workflow: DEFAULT_CALLER_WORKFLOW, json: false };
+  const args: Args = {
+    mode,
+    baseRef: 'origin/main',
+    workflow: DEFAULT_CALLER_WORKFLOW,
+    json: false,
+  };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--pr') args.pr = Number(argv[++i]);
@@ -246,16 +255,7 @@ async function runInvalidate(repo: string, args: Args): Promise<void> {
     //    target the caller file, not this reusable file — hence the `--workflow` flag.
     await ghCall(
       {
-        argv: [
-          'gh',
-          'workflow',
-          'run',
-          args.workflow,
-          '--repo',
-          repo,
-          '-f',
-          `pr=${pr.number}`,
-        ],
+        argv: ['gh', 'workflow', 'run', args.workflow, '--repo', repo, '-f', `pr=${pr.number}`],
       },
       null,
       { cwd: args.cwd },
