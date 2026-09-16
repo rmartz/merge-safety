@@ -1,6 +1,6 @@
 {
   "name": "@rmartz/merge-safety",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The pre-auto-merge safety verdict for a PR (base-currency, breaking-change, and conflict facts), posted as the `merge-safety` check-run and distributed via a reusable workflow kept current by Dependabot.",
   "keywords": [
     "ci",
