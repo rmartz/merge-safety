@@ -45,5 +45,5 @@ merge itself.
   the `merge-safety` check-run name.
 - **[Setting up merge-safety in a consuming repo](consuming.md)** — the caller
   workflow and its permissions.
-- **[The extraction migration](migration.md)** — the split out of
+- **[The extraction migration](migration.md)** — how it was split out of
   `@rmartz/pr-review` and the locked layer-0 dependency decisions behind the CLI.

@@ -48,8 +48,9 @@ one `ai-tools` uses), so it is stricter than the open OKF spec in two ways:
 - **`resource`** — a repo-relative path that must **exist on disk** — is
   **required on every non-`Design`, non-`Reference` page**, binding each doc to
   the code it describes. `Design` and `Reference` pages are exempt (they document
-  an intent or a convention, not one source file). While the package is a
-  scaffold, its doc pages are all `Reference`.
+  an intent or a convention, not one source file). The current doc pages are all
+  `Reference` — they document concepts and conventions rather than individual
+  source files.
 
 The curated `type` vocabulary and the resource-exempt types are configured in
 [`.repo-hygiene.yml`](../.repo-hygiene.yml) under `checks.okf`; adjust them there

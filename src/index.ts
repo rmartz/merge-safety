@@ -1,12 +1,11 @@
 /**
  * @rmartz/merge-safety — public entry point.
  *
- * SCAFFOLD: this package is being extracted from `@rmartz/pr-review` per
- * ai-tools#247. The evaluate/invalidate implementation (`merge-safety.ts` +
- * `merge-safety-facts.ts`, with their tests and the `ai-merge-safety` bin)
- * migrates in a follow-up; see docs/migration.md. Until then this module only
- * encodes the package's stable public contract so the reusable workflow and the
- * consumer wiring can be exercised end to end.
+ * Encodes the package's stable public contract: the `merge-safety` check-run
+ * name and the CLI command surface. The evaluate/invalidate implementation
+ * (`merge-safety.ts` + `merge-safety-facts.ts` and the `ai-merge-safety` bin)
+ * lives alongside it; this module is intentionally the narrow, frozen surface
+ * consumers and the reusable workflow depend on.
  */
 
 /**
