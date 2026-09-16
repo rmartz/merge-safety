@@ -1,0 +1,42 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Minor/patch bumps batched; majors fall out into isolated PRs for review.
+      github-actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Prettier isolated into its own group so a reformatting bump can't hide in a
+      # catch-all (a Prettier minor can reformat the whole tree).
+      prettier:
+        patterns:
+          - 'prettier'
+      dev-dependencies:
+        dependency-type: development
+        exclude-patterns:
+          - 'prettier'
+        update-types:
+          - minor
+          - patch
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch

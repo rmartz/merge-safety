@@ -1,0 +1,11 @@
+# >>> ai-tools managed (ensure-project-config) >>>
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+coverage/
+# <<< ai-tools managed (ensure-project-config) <<<
+
+# Generated files Prettier must not own (outside the managed block above).
+pnpm-lock.yaml
+**/CHANGELOG.md

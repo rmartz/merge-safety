@@ -1,0 +1,37 @@
+name: PR Title Lint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Check PR title format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Reject a [WIP] marker anywhere in the title (case-insensitive). A
+          # work-in-progress PR must not be mergeable; removing the marker (a title
+          # edit re-runs this check) is what lets CI go green. The bracketed form
+          # avoids false positives on "WIP" appearing inside a word.
+          if printf '%s\n' "$PR_TITLE" | grep -qiE '\[wip\]'; then
+            echo "PR title still carries a [WIP] marker: $PR_TITLE"
+            echo "Remove [WIP] before merging — a work-in-progress PR must not be mergeable."
+            exit 1
+          fi
+          if printf '%s\n' "$PR_TITLE" | grep -qE '^(feat|fix|docs|chore|refactor|test|style|perf|ci|build|revert)(\([^)]+\))?!?: [^[:space:]].*$'; then
+            echo "PR title is valid: $PR_TITLE"
+          else
+            echo "PR title does not follow Conventional Commits format."
+            echo "Expected: <type>[!]: description  or  <type>(<scope>)[!]: description"
+            echo "Valid types: feat, fix, docs, chore, refactor, test, style, perf, ci, build, revert"
+            echo "Got: $PR_TITLE"
+            exit 1
+          fi

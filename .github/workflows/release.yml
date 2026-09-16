@@ -1,0 +1,58 @@
+name: Release
+
+# Automated releases via release-please. On every push to main it maintains a
+# "release" PR that bumps the version (from Conventional-Commit history) and
+# updates the changelog. Merging that PR creates the release/tag; the publish job
+# then builds and publishes @rmartz/merge-safety to GitHub Packages with public
+# access, and release-please's extra-files keeps the version string in
+# .github/workflows/merge-safety.yml (the reusable workflow) in lockstep with the
+# release.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # create releases + the release-PR branch
+  pull-requests: write # open/update the release PR
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          # GITHUB_TOKEN-created PRs don't trigger CI. Set a RELEASE_PLEASE_PAT
+          # secret (contents + pull-requests write) to run CI on the release PR;
+          # falls back to the built-in token otherwise.
+          token: ${{ secrets.RELEASE_PLEASE_PAT || github.token }}
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # required to publish to GitHub Packages
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@rmartz'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Publish to GitHub Packages
+        run: pnpm publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

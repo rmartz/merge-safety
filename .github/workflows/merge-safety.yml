@@ -1,0 +1,119 @@
+name: merge-safety (reusable)
+
+# The single entry point consuming repos pin. Unlike a read-only hygiene check, a
+# consumer's caller is NOT trigger-free: a reusable workflow cannot declare
+# `on: pull_request`/`push`, so the caller carries the triggers, grants the write
+# scopes (checks / pull-requests / actions), threads its workflow_dispatch `pr`
+# input through `with:`, and passes `secrets: inherit`. The caller is otherwise
+# thin — the evaluate-vs-invalidate branch and all label logic live here, because
+# a reusable workflow sees the caller's event context. See docs/consuming.md.
+#
+#   jobs:
+#     merge-safety:
+#       uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@<sha>  # vX.Y.Z
+#       with:
+#         pr: ${{ inputs.pr }}
+#       secrets: inherit
+#
+# Dependabot's github-actions ecosystem bumps that <sha> pin via PRs, so updates
+# propagate with no per-repo YAML edits. The @rmartz/merge-safety version this
+# workflow installs is bumped in lockstep with each release (release-please
+# extra-files), so a pinned ref is fully reproducible.
+#
+# THE CHECK-RUN NAME `merge-safety` IS A FLEET CONTRACT. Every consumer configures
+# a required status check of that exact name and the auto-merge gate keys off it;
+# it is never renamed here. See docs/check-run-contract.md.
+#
+# SCAFFOLD NOTE: the two jobs install and invoke `@rmartz/merge-safety`, whose
+# `ai-merge-safety` bin is still being extracted from `@rmartz/pr-review`
+# (ai-tools#247). The job shape below is faithful to the current consumer workflow
+# and is finalized (CLI flags, caller-workflow threading) during that migration.
+# See docs/migration.md.
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        description: PR number to evaluate (threaded from the caller's workflow_dispatch input).
+        type: string
+        required: false
+        default: ''
+      version:
+        description: '@rmartz/merge-safety version to install (pinned to this release).'
+        type: string
+        required: false
+        default: 0.0.0 # x-release-please-version
+      node-version:
+        description: Node.js version to run under.
+        type: string
+        required: false
+        default: '22'
+      caller-workflow:
+        description: >-
+          The consumer's caller workflow filename, which the invalidate fan-out
+          re-dispatches per PR. Defaults to the conventional merge-safety.yml.
+        type: string
+        required: false
+        default: merge-safety.yml
+
+permissions:
+  checks: write # post/flip the merge-safety check-run
+  pull-requests: write # reconcile update-required / merge-conflict labels
+  contents: read
+  actions: write # dispatch per-PR evaluate runs on the push fan-out
+  packages: read # install the CLI from GitHub Packages
+
+concurrency:
+  group: merge-safety-${{ github.event_name == 'push' && 'invalidate' || github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Evaluate one PR
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+      BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          fetch-depth: 0 # merge-base + diffs need full history
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://npm.pkg.github.com
+          scope: '@rmartz'
+      - name: Install ai-merge-safety
+        env:
+          # The public @rmartz/merge-safety package on GitHub Packages is readable
+          # with the built-in GITHUB_TOKEN — no consumer PAT required.
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm install -g "@rmartz/merge-safety@${{ inputs.version }}"
+      # Fetch the PR head as git data so merge-base/diffs resolve — the dispatched
+      # (workflow_dispatch) path checks out the base and would otherwise lack it.
+      - run: git fetch --quiet origin "${BASE_REF}" "pull/${PR_NUMBER}/head"
+      - run: ai-merge-safety evaluate --pr "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --base "origin/${BASE_REF}"
+
+  invalidate:
+    name: Invalidate open PRs (base moved)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CALLER_WORKFLOW: ${{ inputs.caller-workflow }}
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://npm.pkg.github.com
+          scope: '@rmartz'
+      - name: Install ai-merge-safety
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm install -g "@rmartz/merge-safety@${{ inputs.version }}"
+      - run: ai-merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"

@@ -1,0 +1,70 @@
+{
+  "name": "@rmartz/merge-safety",
+  "version": "0.0.0",
+  "description": "The pre-auto-merge safety verdict for a PR (base-currency, breaking-change, and conflict facts), posted as the `merge-safety` check-run and distributed via a reusable workflow kept current by Dependabot.",
+  "keywords": [
+    "ci",
+    "merge-safety",
+    "auto-merge",
+    "github-actions",
+    "reusable-workflow",
+    "check-run"
+  ],
+  "homepage": "https://github.com/rmartz/merge-safety#readme",
+  "bugs": {
+    "url": "https://github.com/rmartz/merge-safety/issues"
+  },
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "ai-merge-safety": "./dist/bin/merge-safety.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rmartz/merge-safety.git"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "@vitest/coverage-v8": "^5.0.1",
+    "eslint": "^10.10.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": ">=0.28.1"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+name: Repo Hygiene
+
+# This repo consumes @rmartz/repo-hygiene through the exact reusable-workflow
+# caller every consuming repo uses. It pins repo-hygiene's published reusable
+# workflow by SHA (Dependabot bumps it via the github-actions ecosystem) and runs
+# our chosen check set against our own tree through the published
+# @rmartz/repo-hygiene package.
+#
+# We name the checks explicitly (rather than take the default-on set) so OKF docs
+# conformance, docs-link integrity, AGENTS/CLAUDE pairing, and file-size caps are
+# all gated here, configured via .repo-hygiene.yml.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  hygiene:
+    permissions:
+      contents: read
+      packages: read
+    uses: rmartz/repo-hygiene/.github/workflows/hygiene.yml@f1dcbeb51e68dec2f2064aca4620bd052d455a8f # v1.0.1
+    with:
+      checks: conflict-markers action-pins package-pins docs-links md-pairing okf okf-index file-caps
+      config: .repo-hygiene.yml
