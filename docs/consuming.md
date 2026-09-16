@@ -13,6 +13,17 @@ it carries the event triggers, grants write scopes, and passes secrets through �
 because a reusable workflow cannot declare its own `on:` triggers and runs with
 the _intersection_ of the caller-granted and workflow-declared permissions.
 
+> **Prerequisite — the labels merge-safety manages must already exist in the repo.**
+> `evaluate` reconciles two labels on each PR — **`update required`** and
+> **`merge conflict`** — and reads a **`breaking change`** label as a
+> breaking-change input where the repo uses that convention. Label reconciliation
+> goes through `gh` and **soft-fails silently**: if `update required` /
+> `merge conflict` do not exist in the repo, the check-run still posts its verdict
+> but those human-facing labels never appear, with no error surfaced. Create them
+> before adopting — `ai-ensure-labels` seeds the standard roster (which includes
+> these), or create them by hand — so the labels track the verdict from the first
+> run.
+
 ## 1. Add the caller workflow
 
 The [`@rmartz/bootstrap`](https://github.com/rmartz/ai-tools) `ai-ensure-project-config`
@@ -76,12 +87,30 @@ updates:
       interval: weekly
 ```
 
+**Use a plain `# vX.Y.Z` version comment** on the pin — e.g.
+`…/merge-safety.yml@<sha> # v0.1.0` — **not** the component-scoped tag name. This
+repo's releases are **tagged** `merge-safety-vX.Y.Z` (release-please component
+tags), but the pin comment should stay plain `vX.Y.Z`: that is the form Dependabot's
+`github-actions` ecosystem tracks to re-bump the SHA + comment together, and the
+form that consumer pin-linters requiring a full `vMAJOR.MINOR.PATCH` comment accept
+(`# merge-safety-v0.1.0` would fail such a linter). This is exactly how this repo
+pins its own `@rmartz/repo-hygiene` caller — `hygiene.yml@<sha> # v1.0.1` against
+`repo-hygiene-vX.Y.Z` release tags — a pin Dependabot keeps current.
+
 ## 3. Require the check
 
 Add `merge-safety` to the repo's **required status checks** on the default branch.
 The name must be exactly `merge-safety` — see
 [the check-run contract](check-run-contract.md). This is what makes native
 auto-merge wait for the safety verdict.
+
+> **First run — trigger the check once before requiring it.** GitHub's
+> branch-protection UI only lists a check in the required-checks picker after it has
+> posted at least once, so on a fresh repo `merge-safety` won't be selectable yet.
+> Let the workflow run one time first — open a PR, or dispatch it via
+> `workflow_dispatch` (the `pr` input) — then add `merge-safety` to the required
+> checks. (Alternatively, set it by name through the branch-protection API before it
+> has ever run.)
 
 **Auth:** the published `@rmartz/merge-safety` package is **public** on GitHub
 Packages, readable with the built-in `GITHUB_TOKEN` — the `packages: read`

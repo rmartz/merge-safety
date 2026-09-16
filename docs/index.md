@@ -13,7 +13,7 @@ Documentation for `@rmartz/merge-safety`, written in
   workflow, the write scopes it grants, and how the pin stays current.
 - [The check-run contract](check-run-contract.md) — why the check-run name
   `merge-safety` is a fleet contract that cannot be renamed locally.
-- [The extraction migration](migration.md) — how this package is being split out
-  of `@rmartz/pr-review` (ai-tools#247) and the open decisions.
+- [The extraction migration](migration.md) — how this package was split out
+  of `@rmartz/pr-review` (ai-tools#247) and the now-locked layer-0 decisions.
 - [The OKF documentation format](okf-format.md) — how these pages are structured
   and validated in this repo.

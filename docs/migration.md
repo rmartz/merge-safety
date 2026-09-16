@@ -1,21 +1,22 @@
 ---
 type: Reference
 title: The extraction migration
-description: How @rmartz/merge-safety is being split out of @rmartz/pr-review per ai-tools#247 — what moves, the depend-vs-inline decision for its layer-0 deps, and the ai-tools-side cutover this repo coordinates.
+description: How @rmartz/merge-safety was split out of @rmartz/pr-review per ai-tools#247 — what moved, the now-locked layer-0 dependency decisions, and the ai-tools-side cutover this repo coordinates.
 tags: [migration, extraction, ai-tools]
 ---
 
 # The extraction migration
 
 This repo is the standalone home of the merge-safety slice of
-`@rmartz/pr-review`. It is being extracted so that consumers pin a **reusable
+`@rmartz/pr-review`. It was extracted so that consumers pin a **reusable
 workflow by SHA** (Dependabot-bumped) instead of a bootstrap-seeded workflow that
 hard-installs `@rmartz/pr-review@${MERGE_SAFETY_VERSION}` — an `env`-pin invisible
 to Dependabot. The precedent is the `rmartz/repo-hygiene` split; the ai-tools-side
 reference is **ai-tools#247**, and this repo's agent coordinates the cutover
-against it.
+against it. The code extraction is complete and shipped in `v0.1.0`; this page is
+the record of how it was done.
 
-## What moves here
+## What moved here
 
 A clean, self-contained slice of `@rmartz/pr-review`:
 
@@ -57,7 +58,7 @@ bin now live in `src/` alongside the package's stable public contract (the
 ## The ai-tools-side cutover (coordinated, not owned here)
 
 Tracked in ai-tools#247; this repo's agent coordinates it with the ai-tools
-agent once `@rmartz/merge-safety` publishes its first release:
+agent now that `@rmartz/merge-safety` has published `v0.1.0`:
 
 - Split `merge-safety.ts` / `-facts.ts` (+ tests + the `ai-merge-safety` bin) out
   of `@rmartz/pr-review`; leave the review-craft modules. Flag to PR Shepherd (it

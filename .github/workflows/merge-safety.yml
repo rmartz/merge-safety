@@ -24,11 +24,10 @@ name: merge-safety (reusable)
 # a required status check of that exact name and the auto-merge gate keys off it;
 # it is never renamed here. See docs/check-run-contract.md.
 #
-# SCAFFOLD NOTE: the two jobs install and invoke `@rmartz/merge-safety`, whose
-# `ai-merge-safety` bin is still being extracted from `@rmartz/pr-review`
-# (ai-tools#247). The job shape below is faithful to the current consumer workflow
-# and is finalized (CLI flags, caller-workflow threading) during that migration.
-# See docs/migration.md.
+# The two jobs install and invoke the published `@rmartz/merge-safety` CLI
+# (`ai-merge-safety`), which shipped its full `evaluate` / `invalidate`
+# implementation in v0.1.0 (extracted from `@rmartz/pr-review`, ai-tools#247).
+# See docs/migration.md for how it was extracted.
 
 on:
   workflow_call:
