@@ -6,7 +6,7 @@
 //               pending and dispatch its own evaluate run, so a moved base holds
 //               auto-merge until each PR re-clears against the new base.
 // All judgment lives in the library; this only parses args and talks to `gh`.
-import { ghCall, resolveRepoTarget, addLabels, removeLabel } from '@rmartz/github';
+import { ghCall, resolveRepoTarget, addLabels, removeLabel } from '../lib/github.js';
 import {
   MERGE_SAFETY_CHECK_NAME,
   isMergeSafetyCommand,

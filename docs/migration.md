@@ -38,15 +38,16 @@ code migration. **Both decisions are now locked:**
   _(Done: [#2](https://github.com/rmartz/merge-safety/issues/2) / PR #7.)_
 - **`@rmartz/github` → `ghCall`, `resolveRepoTarget`, `addLabels`, `removeLabel`**
   (the gh REST+GraphQL transport plus label helpers). The substantial call —
-  **DEPEND on the published `@rmartz/github`, pinned `^0.4.2`.** `ghCall` pulls
-  the REST+GraphQL transport we don't want to reproduce, and inlining is heavier
-  here than for repo-hygiene (whose github surface was smaller), so depending is
-  the lighter path. `@rmartz/github` is **public** on GitHub Packages, so the
-  reusable workflow's `setup-node` install resolves it transitively with the
-  built-in `GITHUB_TOKEN` — no consumer PAT. It is a `dependencies` entry in
-  `package.json`, imported by the `ai-merge-safety` bin.
-  _(Decided in [#4](https://github.com/rmartz/merge-safety/issues/4#issuecomment-5699755986);
-  end-to-end install is verified at [#5](https://github.com/rmartz/merge-safety/issues/5).)_
+  **INLINED** as `src/lib/github.ts`, ported from `@rmartz/github@0.4.2`, keeping
+  this package **zero-runtime-dependency** like repo-hygiene. The initial decision
+  was to _depend_ on the published package, but depending pulled in GitHub Packages
+  install auth (a scoped `.npmrc` + `NODE_AUTH_TOKEN` in CI, and a token for local
+  lockfile generation); inlining the ~200-line surface removes that friction
+  entirely — and `ghCall` already runs its git subprocess through our own inlined
+  `boundedRun`, so there is no `@rmartz/*` edge left at all. The port carries a
+  provenance header flagging it as a traceable divergence: check upstream
+  `@rmartz/github` for transport/rate-limit fixes when touching that file.
+  _(Superseded depend decision: [#4](https://github.com/rmartz/merge-safety/issues/4#issuecomment-5699755986).)_
 
 The `merge-safety.ts` / `merge-safety-facts.ts` slice and the `ai-merge-safety`
 bin now live in `src/` alongside the package's stable public contract (the

@@ -48,9 +48,6 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@rmartz/github": "^0.4.2"
-  },
   "devDependencies": {
     "@types/node": "^26.6.1",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
