@@ -16,5 +16,13 @@ runs:
       with:
         node-version: 22
         cache: pnpm
+        # Route @rmartz-scoped packages to GitHub Packages so pnpm can resolve
+        # runtime deps like @rmartz/github. Auth is the env-ref token below.
+        registry-url: https://npm.pkg.github.com
+        scope: '@rmartz'
     - run: pnpm install ${{ inputs.frozen-lockfile == 'true' && '--frozen-lockfile' || '--no-frozen-lockfile' }}
       shell: bash
+      env:
+        # github.token can read this org's GitHub Packages when the calling job
+        # grants `packages: read`. The committed .npmrc reads it via ${NODE_AUTH_TOKEN}.
+        NODE_AUTH_TOKEN: ${{ github.token }}

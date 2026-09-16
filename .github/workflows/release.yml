@@ -57,6 +57,10 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@rmartz'
       - run: pnpm install --frozen-lockfile
+        env:
+          # Resolve @rmartz-scoped deps from GitHub Packages during install
+          # (job already grants packages: write).
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm run build
       - name: Publish to GitHub Packages
         run: pnpm publish --no-git-checks --access public
