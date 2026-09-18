@@ -26,15 +26,17 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 
 ## 1. Add the caller workflow
 
-The [`@rmartz/bootstrap`](https://github.com/rmartz/ai-tools) `ai-ensure-project-config`
-step seeds this file (policy `seed`: seeded once, then owned by Dependabot — not
-re-managed by bootstrap, so the pin can move). What it seeds:
+On a new repo the [`@rmartz/bootstrap`](https://github.com/rmartz/ai-tools)
+`ai-ensure-project-config` step seeds this file (policy `seed`: seeded once, then
+owned by Dependabot — not re-managed by bootstrap, so the pin can move). **Existing
+repos consume merge-safety through this same caller**, so adopt the form below
+directly — do not wait for a bootstrap re-run, which only touches greenfield repos.
 
 ```yaml
 # .github/workflows/merge-safety.yml
 name: merge-safety
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
   push:
     branches: [main]
@@ -57,11 +59,31 @@ jobs:
     secrets: inherit
 ```
 
+> **Trigger on `pull_request_target`, not `pull_request`.** GitHub runs a
+> `pull_request` workflow against the synthetic `refs/pull/N/merge` commit, which it
+> **cannot build for an unmergeable PR** — so on a PR that conflicts with its base,
+> no `pull_request` run is ever dispatched and the `merge-safety` check-run is never
+> posted. A required check that never appears hangs the PR forever (see
+> [the check-run contract](check-run-contract.md)), and a conflict is exactly when
+> the merge-safety verdict matters most. `pull_request_target` runs in the base
+> context and needs no merge commit, so it fires even when the PR is unmergeable.
+> This is safe here because the reusable `evaluate` job checks out the **base ref**,
+> fetches the PR head only as git _data_, and runs the published `ai-merge-safety`
+> CLI — it never executes PR-authored code. (One trade-off: under
+> `pull_request_target` the caller definition is read from the base branch, so a PR
+> that edits this workflow only takes effect once merged — fine for a
+> Dependabot-owned pin.) Greenfield bootstrap seeding is being moved to
+> `pull_request_target` in
+> [ai-tools#272](https://github.com/rmartz/ai-tools/issues/272); repos already seeded
+> with `pull_request` should switch their caller now.
+
 Why each piece is there:
 
-- **The caller carries the triggers.** A reusable workflow can't declare
-  `on: pull_request`/`push`; the caller does and passes the event context in. The
-  `evaluate`-vs-`invalidate` branch and the label-narrowing logic live inside the
+- **The caller carries the triggers.** A reusable workflow can't declare its own
+  `on:` triggers; the caller does and passes the event context in. Use
+  `pull_request_target` (see the callout above) plus `push` on the default branch,
+  and thread the `workflow_dispatch` input. The `evaluate`-vs-`invalidate` branch
+  and the label-narrowing logic live inside the
   [reusable workflow](../.github/workflows/merge-safety.yml), so the caller stays
   thin.
 - **Write scopes, not read-only.** Effective permissions are the intersection of
