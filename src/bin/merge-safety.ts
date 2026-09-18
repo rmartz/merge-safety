@@ -6,6 +6,8 @@
 //               pending and dispatch its own evaluate run, so a moved base holds
 //               auto-merge until each PR re-clears against the new base.
 // All judgment lives in the library; this only parses args and talks to `gh`.
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { ghCall, resolveRepoTarget, addLabels, removeLabel } from '../lib/github.js';
 import {
   MERGE_SAFETY_CHECK_NAME,
@@ -23,7 +25,7 @@ import { gatherMergeSafetyFacts, makeGitRunner, type PrMergeMeta } from '../merg
 /** The conventional consumer caller filename the invalidate fan-out re-dispatches. */
 const DEFAULT_CALLER_WORKFLOW = 'merge-safety.yml';
 
-interface Args {
+export interface Args {
   mode: MergeSafetyCommand;
   pr?: number;
   exclude?: number;
@@ -148,7 +150,7 @@ async function reconcileLabels(
   for (const label of remove) await removeLabel(repo, pr, label, { cwd });
 }
 
-async function runEvaluate(repo: string, pr: number, args: Args): Promise<void> {
+export async function runEvaluate(repo: string, pr: number, args: Args): Promise<void> {
   const view = await fetchPrView(repo, pr, args.cwd);
   if (!view) {
     // A PR we can't even read is ungatherable — same fail-safe verdict.
@@ -220,7 +222,7 @@ function emitDecisionJson(decision: MergeSafetyDecision, isError: boolean): void
   if (isError) process.exitCode = 1;
 }
 
-async function runInvalidate(repo: string, args: Args): Promise<void> {
+export async function runInvalidate(repo: string, args: Args): Promise<void> {
   const prs = await ghJson<{ number: number; headRefOid: string }[]>(
     [
       'gh',
@@ -275,4 +277,17 @@ async function main(): Promise<void> {
   else await runInvalidate(repo, args);
 }
 
-void main();
+// Run only when invoked directly as the CLI entry. realpathSync resolves the npm
+// bin symlink (node_modules/.bin/ai-merge-safety → dist/bin/merge-safety.js) so the
+// comparison holds for the installed CLI, while an import (tests) does not match.
+function isDirectRun(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectRun()) void main();
