@@ -16,7 +16,10 @@ contract** that three separate things depend on by string:
    default branch. GitHub matches required checks by name, so the posted check-run
    and the required-check config must agree character-for-character or the gate
    silently never satisfies (a required check that never appears hangs the PR
-   forever).
+   forever). A name mismatch is one way the check never appears; a caller triggered
+   on `pull_request` rather than `pull_request_target` is another — GitHub dispatches
+   no `pull_request` run for an unmergeable PR, so the check is never posted (see
+   [Setting up merge-safety in a consuming repo](consuming.md)).
 2. **The auto-merge gate.** The fleet's auto-merge path gates on
    `goldenGateChecks = ['merge-safety']` (in ai-tools' `golden-config.ts`). The
    verifier looks up the check by that name; a mismatch means auto-merge either
