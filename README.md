@@ -87,9 +87,13 @@ pnpm run test         # vitest
 
 ## Releases
 
-Versioned by release-please. Merging its release PR tags the release and
-publishes the package to GitHub Packages (public); the version installed by the
-reusable workflow is bumped in lockstep via release-please `extra-files`.
+Tag-driven. Cut a release with `pnpm version <patch|minor|major>` (bumps
+`package.json`, commits, tags `vX.Y.Z`) then `git push --follow-tags`. Pushing the
+tag runs [`release.yml`](.github/workflows/release.yml), which builds and publishes
+the package to GitHub Packages (public) and creates a GitHub Release with generated
+notes — using only the built-in `GITHUB_TOKEN`, no release-please and no PAT. The
+version installed by the reusable workflow is resolved at runtime from its own
+pinned commit, so it lives only in `package.json`.
 
 ---
 

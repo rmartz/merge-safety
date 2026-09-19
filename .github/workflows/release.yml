@@ -1,52 +1,38 @@
 name: Release
 
-# Automated releases via release-please. On every push to main it maintains a
-# "release" PR that bumps the version (from Conventional-Commit history) and
-# updates the changelog. Merging that PR creates the release/tag; the publish job
-# then builds and publishes @rmartz/merge-safety to GitHub Packages with public
-# access, and release-please's extra-files keeps the version string in
-# .github/workflows/merge-safety.yml (the reusable workflow) in lockstep with the
-# release.
+# Tag-driven publish. Cutting a release is a deliberate act — bump the version and
+# push the tag:
+#
+#   pnpm version <patch|minor|major>   # bumps package.json, commits, tags vX.Y.Z
+#   git push --follow-tags
+#
+# Pushing a vX.Y.Z tag triggers this workflow, which builds and publishes
+# @rmartz/merge-safety to GitHub Packages (public) and creates a GitHub Release
+# with auto-generated notes. There is NO release-please: nothing parses commit or
+# PR-body text, nothing writes a version into a workflow file, and the built-in
+# GITHUB_TOKEN is the only credential (no RELEASE_PLEASE_PAT).
+#
+# The reusable workflow (.github/workflows/merge-safety.yml) resolves the version
+# to install from its own pinned commit at runtime (job.workflow_sha → package.json),
+# so the version lives ONLY in package.json — never duplicated into a workflow file.
+# A failed run re-runs from the Actions UI against the same tag. See docs/consuming.md.
 
 on:
   push:
-    branches: [main]
+    tags: ['v*.*.*']
 
 permissions:
-  contents: write # create releases + the release-PR branch
-  pull-requests: write # open/update the release PR
+  contents: write # create the GitHub Release
+  packages: write # publish to GitHub Packages
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-    steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          # RELEASE_PLEASE_PAT is REQUIRED here, not optional. release-please's
-          # extra-files bumps the pinned version inside the reusable workflow
-          # .github/workflows/merge-safety.yml, and the built-in GITHUB_TOKEN cannot
-          # write files under .github/workflows/ — it lacks the `workflow` scope, so
-          # GitHub rejects the tree write (a disguised 404, which release-please
-          # reports as "Error adding to tree"). Provide a PAT with `repo` + `workflow`
-          # scope. It also lets the release PR trigger CI, which GITHUB_TOKEN-created
-          # PRs don't. The `|| github.token` fallback only keeps this file valid when
-          # the secret is absent; the release itself fails until the secret exists.
-          token: ${{ secrets.RELEASE_PLEASE_PAT || github.token }}
-
   publish:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write # required to publish to GitHub Packages
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -57,8 +43,27 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@rmartz'
       - run: pnpm install --frozen-lockfile
+      # The pushed tag must match package.json's version: the reusable workflow reads
+      # that version back from this commit, so a mismatch would install the wrong
+      # package. Fail loudly rather than publish an inconsistent release.
+      - name: Verify tag matches package.json version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pkg="$(node -p "require('./package.json').version")"
+          tag="${REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "Tag ${REF_NAME} (version $tag) does not match package.json version $pkg." >&2
+            echo "Cut releases with 'pnpm version <bump>' so the tag and package.json stay in lockstep." >&2
+            exit 1
+          fi
       - run: pnpm run build
       - name: Publish to GitHub Packages
         run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag
