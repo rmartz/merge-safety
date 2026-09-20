@@ -110,14 +110,15 @@ updates:
 ```
 
 **Use a plain `# vX.Y.Z` version comment** on the pin — e.g.
-`…/merge-safety.yml@<sha> # v0.1.0` — **not** the component-scoped tag name. This
-repo's releases are **tagged** `merge-safety-vX.Y.Z` (release-please component
-tags), but the pin comment should stay plain `vX.Y.Z`: that is the form Dependabot's
-`github-actions` ecosystem tracks to re-bump the SHA + comment together, and the
-form that consumer pin-linters requiring a full `vMAJOR.MINOR.PATCH` comment accept
-(`# merge-safety-v0.1.0` would fail such a linter). This is exactly how this repo
-pins its own `@rmartz/repo-hygiene` caller — `hygiene.yml@<sha> # v1.0.1` against
-`repo-hygiene-vX.Y.Z` release tags — a pin Dependabot keeps current.
+`…/merge-safety.yml@<sha> # v0.1.0`. This repo's releases are **tagged** plain
+`vX.Y.Z` (tag-driven — see the repo's Releases), so the pin comment matches the tag
+directly: that is what Dependabot's `github-actions` ecosystem needs to re-bump the
+SHA and refresh the comment together, and the form consumer pin-linters requiring a
+full `vMAJOR.MINOR.PATCH` comment accept.
+
+> The very first release (`v0.1.0`) predates this and was tagged `merge-safety-v0.1.0`
+> (a release-please component tag); every release from `v0.1.1` on is a plain
+> `vX.Y.Z` tag.
 
 ## 3. Require the check
 

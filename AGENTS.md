@@ -57,10 +57,11 @@ file as off-limits just because bootstrap once seeded it.
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
-  build ([ci.yml](.github/workflows/ci.yml)), the PR-title lint + the
-  `commit-convention` tripwire, release-please, and the hardened `dependabot.yml`
-  are all in place. `ai-ensure-labels` / `ai-verify-squash-setting` remain useful
-  one-shot helpers, but this repo owns its `.github/` config going forward.
+  build ([ci.yml](.github/workflows/ci.yml)), the PR-title lint, the tag-driven
+  release ([release.yml](.github/workflows/release.yml)), and the hardened
+  `dependabot.yml` are all in place. `ai-ensure-labels` / `ai-verify-squash-setting`
+  remain useful one-shot helpers, but this repo owns its `.github/` config going
+  forward.
 
 ## Common commands
 
@@ -102,12 +103,18 @@ Most are enforced by eslint; the intent:
   before building. (The one exception was the genesis scaffold commit, which had
   no prior branch to base a worktree on.)
 - **PR titles must be Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:`,
-  …). The repo squash-merges using the **PR title**, so it is the only
-  conventional subject that reaches `main` — a non-conventional title makes
-  release-please skip the release.
-- **Releases are automated** via release-please: merging its release PR tags the
-  version and publishes to GitHub Packages (public); the version installed by the
-  reusable workflow is bumped in lockstep via release-please `extra-files`.
+  …). The repo squash-merges using the **PR title**, so it is the only subject that
+  reaches `main`; a conventional title keeps `git log` and the release notes'
+  auto-grouping readable. (Titles are lint-checked; nothing parses PR _body_ text.)
+- **Releases are tag-driven**, not automated by a bot. Cut one with
+  `pnpm version <patch|minor|major>` (bumps `package.json`, commits, tags `vX.Y.Z`)
+  then `git push --follow-tags`; pushing the tag runs
+  [release.yml](.github/workflows/release.yml), which publishes to GitHub Packages
+  (public) and creates a GitHub Release with generated notes using only the
+  built-in `GITHUB_TOKEN` (no release-please, no PAT). The version the reusable
+  workflow installs is resolved at runtime from its own pinned commit
+  (`job.workflow_sha` → `package.json`), so it lives only in `package.json` — never
+  duplicated into a workflow file.
 
 ## Agent directive files
 

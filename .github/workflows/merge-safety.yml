@@ -17,8 +17,10 @@ name: merge-safety (reusable)
 #
 # Dependabot's github-actions ecosystem bumps that <sha> pin via PRs, so updates
 # propagate with no per-repo YAML edits. The @rmartz/merge-safety version this
-# workflow installs is bumped in lockstep with each release (release-please
-# extra-files), so a pinned ref is fully reproducible.
+# workflow installs is resolved at runtime from this workflow's OWN pinned commit
+# (job.workflow_sha reads package.json), so the version lives only in package.json
+# and a pinned ref is fully reproducible — nothing ever writes a version into this
+# file. See docs/consuming.md.
 #
 # THE CHECK-RUN NAME `merge-safety` IS A FLEET CONTRACT. Every consumer configures
 # a required status check of that exact name and the auto-merge gate keys off it;
@@ -38,10 +40,14 @@ on:
         required: false
         default: ''
       version:
-        description: '@rmartz/merge-safety version to install (pinned to this release).'
+        description: >-
+          Optional @rmartz/merge-safety version override. Empty (the default)
+          resolves the version from this workflow's own pinned commit
+          (job.workflow_sha -> package.json), which is what keeps a SHA pin
+          reproducible without hardcoding a version here.
         type: string
         required: false
-        default: 0.1.0 # x-release-please-version
+        default: ''
       node-version:
         description: Node.js version to run under.
         type: string
@@ -86,12 +92,30 @@ jobs:
           node-version: ${{ inputs.node-version }}
           registry-url: https://npm.pkg.github.com
           scope: '@rmartz'
+      - name: Resolve @rmartz/merge-safety version
+        id: ms
+        env:
+          OVERRIDE: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${OVERRIDE}" ]; then
+            version="${OVERRIDE}"
+          else
+            # job.workflow_sha / job.workflow_repository = THIS reusable workflow's
+            # own repo and the exact commit the consumer pinned (@<sha>), so the
+            # installed version is a pure function of the pinned ref (contents: read
+            # + the built-in GH_TOKEN suffice for the public repo).
+            version="$(gh api \
+              "repos/${{ job.workflow_repository }}/contents/package.json?ref=${{ job.workflow_sha }}" \
+              --jq '.content' | base64 --decode | jq -r .version)"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Install ai-merge-safety
         env:
           # The public @rmartz/merge-safety package on GitHub Packages is readable
           # with the built-in GITHUB_TOKEN — no consumer PAT required.
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install -g "@rmartz/merge-safety@${{ inputs.version }}"
+        run: npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
       # Fetch the PR head as git data so merge-base/diffs resolve — the dispatched
       # (workflow_dispatch) path checks out the base and would otherwise lack it.
       - run: git fetch --quiet origin "${BASE_REF}" "pull/${PR_NUMBER}/head"
@@ -111,8 +135,24 @@ jobs:
           node-version: ${{ inputs.node-version }}
           registry-url: https://npm.pkg.github.com
           scope: '@rmartz'
+      - name: Resolve @rmartz/merge-safety version
+        id: ms
+        env:
+          OVERRIDE: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${OVERRIDE}" ]; then
+            version="${OVERRIDE}"
+          else
+            # See the evaluate job — the version is resolved from this reusable
+            # workflow's own pinned commit, never hardcoded in this file.
+            version="$(gh api \
+              "repos/${{ job.workflow_repository }}/contents/package.json?ref=${{ job.workflow_sha }}" \
+              --jq '.content' | base64 --decode | jq -r .version)"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Install ai-merge-safety
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install -g "@rmartz/merge-safety@${{ inputs.version }}"
+        run: npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
       - run: ai-merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"

@@ -1,5 +1,10 @@
 # Changelog
 
+> **Frozen.** Releases are now tag-driven and their notes are auto-generated on the
+> [GitHub Releases](https://github.com/rmartz/merge-safety/releases) page (see
+> [`release.yml`](.github/workflows/release.yml)). This file is retained as the
+> historical record through `0.1.0` and is no longer updated.
+
 ## 0.1.0 (2026-09-16)
 
 
@@ -14,5 +19,3 @@
 ### Bug Fixes
 
 * repair release-please first-release (extra-files updater) ([#8](https://github.com/rmartz/merge-safety/issues/8)) ([4239b0c](https://github.com/rmartz/merge-safety/commit/4239b0c823ace128acd529df8666cb8a8c5951d1))
-
-## Changelog
