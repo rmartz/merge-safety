@@ -69,13 +69,17 @@ permissions:
   packages: read # install the CLI from GitHub Packages
 
 concurrency:
-  group: merge-safety-${{ github.event_name == 'push' && 'invalidate' || github.event.pull_request.number || inputs.pr }}
+  # push and a base-branch check_suite completion both fan out (invalidate), so they
+  # share one serialized group; PR events key on the PR number.
+  group: merge-safety-${{ (github.event_name == 'push' || github.event_name == 'check_suite') && 'invalidate' || github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: false
 
 jobs:
   evaluate:
     name: Evaluate one PR
-    if: github.event_name != 'push'
+    # Everything that is not a base fan-out event: PR events (pull_request_target /
+    # pull_request) and the workflow_dispatch re-dispatch. push + check_suite → invalidate.
+    if: github.event_name != 'push' && github.event_name != 'check_suite'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -123,7 +127,19 @@ jobs:
 
   invalidate:
     name: Invalidate open PRs (base moved)
-    if: github.event_name == 'push'
+    # Fan out on a push to the base OR when the base branch's own GitHub Actions CI
+    # concludes (check_suite completed) — the latter re-holds already-cleared PRs
+    # once base health flips (a push-time re-eval sees base CI still *pending*, so
+    # the concluded-CI event is what makes a red base actually block non-hotfix PRs,
+    # and a green base release them). Filtered to the github-actions app on the
+    # default branch: one suite per base commit, not per external deploy integration.
+    # No loop: this fan-out's own runs use GITHUB_TOKEN, whose activity GitHub does
+    # not let trigger a further check_suite run.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'check_suite' &&
+       github.event.check_suite.app.slug == 'github-actions' &&
+       github.event.check_suite.head_branch == github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

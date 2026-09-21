@@ -23,6 +23,12 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > before adopting — `ai-ensure-labels` seeds the standard roster (which includes
 > these), or create them by hand — so the labels track the verdict from the first
 > run.
+>
+> **The `hotfix` label is the base-health escape hatch.** When the base branch's
+> own CI is failing, `evaluate` fails the `merge-safety` check for every open PR
+> **except** one labelled **`hotfix`**, so the fix for broken main can still merge
+> while nothing else piles onto it. `hotfix` is in the standard `ai-ensure-labels`
+> roster; make sure it exists so a genuine broken-main fix can override the gate.
 
 ## 1. Add the caller workflow
 
@@ -40,6 +46,8 @@ on:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
   push:
     branches: [main]
+  check_suite:
+    types: [completed]
   workflow_dispatch:
     inputs:
       pr:
@@ -82,10 +90,20 @@ Why each piece is there:
 - **The caller carries the triggers.** A reusable workflow can't declare its own
   `on:` triggers; the caller does and passes the event context in. Use
   `pull_request_target` (see the callout above) plus `push` on the default branch,
-  and thread the `workflow_dispatch` input. The `evaluate`-vs-`invalidate` branch
-  and the label-narrowing logic live inside the
-  [reusable workflow](../.github/workflows/merge-safety.yml), so the caller stays
-  thin.
+  the `check_suite` completion (below), and thread the `workflow_dispatch` input.
+  The `evaluate`-vs-`invalidate` branch and the label-narrowing logic live inside
+  the [reusable workflow](../.github/workflows/merge-safety.yml), so the caller
+  stays thin.
+- **`check_suite: [completed]` re-holds PRs when the base's CI flips.** The
+  base-health axis blocks non-hotfix PRs while the base branch's CI is red. A push
+  to the base re-evaluates open PRs immediately, but at that moment the base's CI
+  is still _pending_ — so the reusable workflow also fans out (`invalidate`) when a
+  base-branch `check_suite` **completes**, re-holding already-cleared PRs once the
+  base goes red and releasing them when it goes green. It is filtered to the
+  `github-actions` app on the default branch (one suite per base commit), and does
+  not loop: the fan-out's own runs use `GITHUB_TOKEN`, whose activity GitHub does
+  not let trigger a further `check_suite` run. (`check_suite`-triggered workflows
+  only run from the default branch — exactly the base we watch.)
 - **Write scopes, not read-only.** Effective permissions are the intersection of
   caller-granted and workflow-declared, so the caller must grant the full
   `checks` / `pull-requests` / `actions: write` set.

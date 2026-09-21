@@ -19,7 +19,8 @@ vi.mock('../src/merge-safety-facts.js', () => ({
   makeGitRunner: vi.fn(() => ({})),
 }));
 
-const { runEvaluate, runInvalidate } = await import('../src/bin/merge-safety.js');
+const { runEvaluate, runInvalidate, makeBaseChecksProbe } =
+  await import('../src/bin/merge-safety.js');
 const { MERGE_SAFETY_CHECK_NAME } = await import('../src/index.js');
 
 const REPO = 'o/r';
@@ -57,9 +58,12 @@ const facts = (over: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts => ({
   prIsBreaking: false,
   fileOverlap: false,
   hasConflict: false,
+  baseCiFailing: false,
+  prIsHotfix: false,
   baseBreakingCommits: [],
   baseCiCommits: [],
   overlappingFiles: [],
+  failingBaseChecks: [],
   ...over,
 });
 
@@ -207,5 +211,37 @@ describe('runInvalidate', () => {
     expect(dispatchArgv).toContain('custom-caller.yml');
     expect(dispatchArgv).toContain('pr=2');
     expect(dispatchArgv).not.toContain('pr=1');
+  });
+});
+
+describe('makeBaseChecksProbe', () => {
+  it('queries the base tip check-runs (deduped to latest) and parses the JSONL', async () => {
+    ghCall.mockResolvedValue(
+      '{"name":"typecheck","conclusion":"failure","appSlug":"github-actions"}\n' +
+        '{"name":"Vercel","conclusion":"success","appSlug":"vercel"}\n',
+    );
+    const checks = await makeBaseChecksProbe(REPO, '/wd')('BASESHA');
+
+    // The endpoint targets the base tip and requests the latest run per name.
+    const argv = ghCall.mock.calls[0]![0].argv as string[];
+    expect(argv.join(' ')).toContain('repos/o/r/commits/BASESHA/check-runs?filter=latest');
+    expect(checks).toEqual([
+      { name: 'typecheck', conclusion: 'failure', appSlug: 'github-actions' },
+      { name: 'Vercel', conclusion: 'success', appSlug: 'vercel' },
+    ]);
+  });
+
+  it('soft-fails to an empty list when the read fails', async () => {
+    ghCall.mockResolvedValue(null);
+    expect(await makeBaseChecksProbe(REPO)('BASESHA')).toEqual([]);
+  });
+
+  it('skips a malformed JSONL line rather than throwing', async () => {
+    ghCall.mockResolvedValue(
+      'not json\n{"name":"test","conclusion":"success","appSlug":"github-actions"}\n',
+    );
+    expect(await makeBaseChecksProbe(REPO)('BASESHA')).toEqual([
+      { name: 'test', conclusion: 'success', appSlug: 'github-actions' },
+    ]);
   });
 });
