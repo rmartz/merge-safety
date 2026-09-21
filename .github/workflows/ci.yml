@@ -59,3 +59,58 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm run test
+
+  # Pre-merge guard for the tag-driven publish (release.yml). The `build` job proves
+  # the code compiles, but nothing else exercises the *packaging* manifest until the
+  # real release run — a broken `files`/`exports`/`bin` mapping, or an entry point the
+  # build stopped emitting, would pass CI and only surface after a tag is pushed. This
+  # job packs exactly what `pnpm publish` would upload (no registry, no tag, no
+  # credentials) and fails the PR if the tarball is malformed or missing a promised
+  # entry point.
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm run build
+      - name: Verify the published tarball ships every manifest entry point
+        run: |
+          set -euo pipefail
+          # `pnpm publish --dry-run` validates the publish manifest and reports the
+          # tarball contents without contacting the registry — the manifest check the
+          # user asked for. On its own it still exits 0 for a broken `dist`, so we then
+          # pack for real (locally) and assert the tarball actually contains every
+          # entry point `exports`/`bin` promise. That assertion is the guard with teeth.
+          pnpm publish --dry-run --no-git-checks
+          tarball="$(pnpm pack | tail -1)"
+          tar -tzf "$tarball" | sed 's#^package/##' > packed-files.txt
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+            const packed = new Set(
+              readFileSync("packed-files.txt", "utf8").split("\n").filter(Boolean),
+            );
+            const refs = new Set();
+            const add = (value) => {
+              if (typeof value === "string") refs.add(value.replace(/^\.\//, ""));
+            };
+            for (const entry of Object.values(pkg.exports ?? {})) {
+              if (typeof entry === "string") add(entry);
+              else for (const target of Object.values(entry)) add(target);
+            }
+            for (const target of Object.values(pkg.bin ?? {})) add(target);
+            const missing = [...refs].filter((path) => !packed.has(path));
+            if (missing.length > 0) {
+              console.error(
+                "Published tarball is missing manifest entry points:\n  " +
+                  missing.join("\n  "),
+              );
+              process.exit(1);
+            }
+            console.log(
+              "All manifest entry points ship in the tarball:\n  " +
+                [...refs].join("\n  "),
+            );
+          '
