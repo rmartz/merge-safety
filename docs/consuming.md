@@ -29,6 +29,12 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > **except** one labelled **`hotfix`**, so the fix for broken main can still merge
 > while nothing else piles onto it. `hotfix` is in the standard `ai-ensure-labels`
 > roster; make sure it exists so a genuine broken-main fix can override the gate.
+> The failure is **self-documenting**: the `merge-safety` check-run reads
+> `Base CI failing` and its summary states _"only hotfix PRs may merge until it is
+> green (label this PR `hotfix` to override)"_ and lists the failing base checks —
+> so an investigating agent or human sees the reason and the override at the point
+> of failure, without consulting these docs. (Even so, `hotfix` should exist so
+> that override is actually applicable.)
 
 ## 1. Add the caller workflow
 
@@ -104,6 +110,18 @@ Why each piece is there:
   not loop: the fan-out's own runs use `GITHUB_TOKEN`, whose activity GitHub does
   not let trigger a further `check_suite` run. (`check_suite`-triggered workflows
   only run from the default branch — exactly the base we watch.)
+
+  A **re-run recovers automatically.** If base CI fails transiently and is then
+  re-run to green, the re-run completes the _same_ check suite again, so GitHub
+  fires a second `check_suite: completed` (now `success`) — `invalidate` fans out
+  once more, each PR re-reads the base tip with `?filter=latest` (which returns the
+  passing re-run, not the earlier failure), and the held PRs are released. The one
+  gap is the recursion guard above: if the re-run is _initiated by `GITHUB_TOKEN`_,
+  GitHub suppresses that `check_suite` event, so the auto-release waits for the next
+  base event instead (a push to the base, or any PR `synchronize`, re-evaluates and
+  picks up the now-green base — so a PR is never _permanently_ stuck, only until the
+  next event). A **human** re-run, or one via a PAT/app token, fires normally.
+
 - **Write scopes, not read-only.** Effective permissions are the intersection of
   caller-granted and workflow-declared, so the caller must grant the full
   `checks` / `pull-requests` / `actions: write` set.
