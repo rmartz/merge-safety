@@ -57,8 +57,8 @@ file as off-limits just because bootstrap once seeded it.
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
-  build ([ci.yml](.github/workflows/ci.yml)), the PR-title lint, the tag-driven
-  release ([release.yml](.github/workflows/release.yml)), and the hardened
+  build / package ([ci.yml](.github/workflows/ci.yml)), the PR-title lint, the
+  tag-driven release ([release.yml](.github/workflows/release.yml)), and the hardened
   `dependabot.yml` are all in place. `ai-ensure-labels` / `ai-verify-squash-setting`
   remain useful one-shot helpers, but this repo owns its `.github/` config going
   forward.
