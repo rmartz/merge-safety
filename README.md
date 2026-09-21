@@ -95,6 +95,12 @@ notes — using only the built-in `GITHUB_TOKEN`, no release-please and no PAT. 
 version installed by the reusable workflow is resolved at runtime from its own
 pinned commit, so it lives only in `package.json`.
 
+The `Package` job in [`ci.yml`](.github/workflows/ci.yml) guards this on every PR:
+it packs exactly what `pnpm publish` would upload (via `pnpm publish --dry-run`, no
+registry or tag involved) and fails if the tarball is malformed or missing an entry
+point that `exports`/`bin` promise — so a broken packaging manifest is caught before
+merge rather than on the real release run.
+
 ---
 
 🤖 Created by Claude Opus 4.8
