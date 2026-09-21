@@ -5,14 +5,18 @@ import {
   isCiCommitMessage,
   isBreakingTitle,
   isEvaluablePrState,
+  isGitHubActionsCheck,
+  isFailingCiConclusion,
+  failingBaseCiCheckNames,
   hasFileOverlap,
   overlappingFiles,
   evaluateMergeSafety,
   errorMergeSafetyDecision,
+  type BaseCheckRun,
   type MergeSafetyFacts,
 } from '../src/merge-safety.js';
 
-/** A safe baseline: current, no triggers, no conflict. Override per test. */
+/** A safe baseline: current, no triggers, no conflict, base CI green. Override per test. */
 function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts {
   return {
     isCurrent: true,
@@ -21,11 +25,19 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
     prIsBreaking: false,
     fileOverlap: false,
     hasConflict: false,
+    baseCiFailing: false,
+    prIsHotfix: false,
     baseBreakingCommits: [],
     baseCiCommits: [],
     overlappingFiles: [],
+    failingBaseChecks: [],
     ...overrides,
   };
+}
+
+/** A base check-run; defaults to a passing GitHub Actions run. Override per test. */
+function check(overrides: Partial<BaseCheckRun> = {}): BaseCheckRun {
+  return { name: 'test', conclusion: 'success', appSlug: 'github-actions', ...overrides };
 }
 
 describe('isBreakingCommitMessage', () => {
@@ -96,6 +108,57 @@ describe('hasFileOverlap', () => {
     expect(hasFileOverlap(['a.ts'], ['b.ts'])).toBe(false);
     expect(hasFileOverlap([], ['a.ts'])).toBe(false);
     expect(hasFileOverlap(['a.ts'], [])).toBe(false);
+  });
+});
+
+describe('isGitHubActionsCheck', () => {
+  it('is true only for the github-actions app slug', () => {
+    expect(isGitHubActionsCheck(check({ appSlug: 'github-actions' }))).toBe(true);
+    expect(isGitHubActionsCheck(check({ appSlug: 'vercel' }))).toBe(false);
+    expect(isGitHubActionsCheck(check({ appSlug: null }))).toBe(false);
+  });
+});
+
+describe('isFailingCiConclusion', () => {
+  it('treats failure / timed_out / startup_failure as failing (expansive)', () => {
+    expect(isFailingCiConclusion('failure')).toBe(true);
+    expect(isFailingCiConclusion('timed_out')).toBe(true);
+    expect(isFailingCiConclusion('startup_failure')).toBe(true);
+  });
+
+  it('does not treat success, a pending null, or a cancelled/skipped run as failing', () => {
+    expect(isFailingCiConclusion('success')).toBe(false);
+    expect(isFailingCiConclusion(null)).toBe(false);
+    expect(isFailingCiConclusion('cancelled')).toBe(false);
+    expect(isFailingCiConclusion('skipped')).toBe(false);
+    expect(isFailingCiConclusion('neutral')).toBe(false);
+  });
+});
+
+describe('failingBaseCiCheckNames', () => {
+  it('returns the names of failing GitHub Actions checks', () => {
+    expect(
+      failingBaseCiCheckNames([
+        check({ name: 'typecheck', conclusion: 'failure' }),
+        check({ name: 'test', conclusion: 'success' }),
+        check({ name: 'lint', conclusion: 'timed_out' }),
+      ]),
+    ).toEqual(['typecheck', 'lint']);
+  });
+
+  it('ignores a failing DEPLOY (non-Actions producer) even when it is red', () => {
+    // The crux of the base-health rule: a red deploy under green Actions is likely
+    // external and must not wedge the queue, so it is never a failing-CI signal.
+    expect(
+      failingBaseCiCheckNames([
+        check({ name: 'Vercel', conclusion: 'failure', appSlug: 'vercel' }),
+        check({ name: 'test', conclusion: 'success', appSlug: 'github-actions' }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('is empty when every Actions check is green', () => {
+    expect(failingBaseCiCheckNames([check({ conclusion: 'success' })])).toEqual([]);
   });
 });
 
@@ -218,6 +281,56 @@ describe('evaluateMergeSafety', () => {
   });
 });
 
+describe('evaluateMergeSafety base health', () => {
+  it('fails a non-hotfix PR when the base CI is failing', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({ baseCiFailing: true, failingBaseChecks: ['typecheck'] }),
+    );
+    expect(d.conclusion).toBe('failure');
+    expect(d.baseUnhealthy).toBe(true);
+    expect(d.title).toBe('Base CI failing');
+    expect(d.reasons[0]).toMatch(/base branch's CI is failing/i);
+    // Base health mints no label — the check-run title/reason carries it.
+    expect(d.labels.add).toEqual([]);
+  });
+
+  it('exempts a hotfix PR from the base-CI-failing axis', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({ baseCiFailing: true, prIsHotfix: true, failingBaseChecks: ['typecheck'] }),
+    );
+    expect(d.conclusion).toBe('success');
+    expect(d.baseUnhealthy).toBe(false);
+    expect(d.reasons).toEqual([]);
+  });
+
+  it('still holds a hotfix PR on the staleness axis — hotfix exempts only base health', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({ baseCiFailing: true, prIsHotfix: true, isCurrent: false, fileOverlap: true }),
+    );
+    expect(d.conclusion).toBe('failure');
+    expect(d.needsUpdate).toBe(true);
+    expect(d.baseUnhealthy).toBe(false); // exempt on base health…
+    expect(d.reasons[0]).toMatch(/files the base also changed since merge-base/i); // …but not staleness
+  });
+
+  it('lists the failing base checks as nested bullets under the base-health reason', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({ baseCiFailing: true, failingBaseChecks: ['typecheck', 'lint'] }),
+    );
+    expect(d.reasons[0]).toContain('\n  - typecheck\n  - lint');
+  });
+
+  it('lets a conflict win the title but still surfaces the base-health reason', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({ baseCiFailing: true, failingBaseChecks: ['test'], hasConflict: true }),
+    );
+    expect(d.title).toBe('Merge conflict');
+    expect(d.baseUnhealthy).toBe(true);
+    expect(d.reasons[0]).toMatch(/merge conflict/i);
+    expect(d.reasons.some((r) => /base branch's CI is failing/i.test(r))).toBe(true);
+  });
+});
+
 describe('evaluateMergeSafety title', () => {
   it('reads "No update required" when safe', () => {
     expect(evaluateMergeSafety(makeFacts({ isCurrent: false })).title).toBe('No update required');
@@ -245,6 +358,7 @@ describe('errorMergeSafetyDecision', () => {
     expect(d.title).toBe('Could not evaluate');
     expect(d.needsUpdate).toBe(false); // genuinely unknown — safety rides on `failure`
     expect(d.hasConflict).toBe(false);
+    expect(d.baseUnhealthy).toBe(false);
     expect(d.reasons).toEqual(['git log failed for BASE..origin/main']);
     expect(d.labels).toEqual({ add: [], remove: [] });
   });

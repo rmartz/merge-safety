@@ -27,6 +27,14 @@
  * A hard git **conflict** is a separate axis from staleness — GitHub blocks such
  * a merge regardless — but the verdict folds it in so a single check answers "is
  * it safe to merge right now?", with a distinct label for visibility.
+ *
+ * **Base health** is a third, PR-independent axis: when the base branch's own CI
+ * is failing, merging anything but a fix onto it only compounds a broken base, so
+ * a PR is held **unless it is a hotfix** (the `hotfix` label is the escape hatch
+ * that lets the fix for broken main through). "Failing CI" is read expansively —
+ * any failing GitHub Actions run on the base counts — but a failing *deploy* does
+ * not: a red deploy under green Actions is likelier an external/environmental
+ * fault no code change can fix, so it must not wedge the whole merge queue.
  */
 
 /** Labels the check drives on a PR. Structural (`as const`) per repo convention. */
@@ -87,6 +95,58 @@ export function isEvaluablePrState(state: string): boolean {
   return state === 'OPEN';
 }
 
+/** The GitHub App slug that produces GitHub Actions check-runs (i.e. CI). */
+const GITHUB_ACTIONS_APP_SLUG = 'github-actions';
+
+/**
+ * Check-run conclusions that count as a *failing* CI run. Expansive — a genuine
+ * red, a timeout, or a startup failure all block — but deliberately excludes
+ * `cancelled` (typically a superseded / re-run duplicate, not a real failure) and
+ * the non-failing `neutral` / `skipped` / `success` / `action_required` / null.
+ */
+const FAILING_CI_CONCLUSIONS = ['failure', 'timed_out', 'startup_failure'] as const;
+
+/** The label a PR carries to declare itself a broken-main fix, exempt from base health. */
+export const HOTFIX_LABEL = 'hotfix';
+
+/**
+ * A base-tip check-run reduced to what base-health classification needs: its name,
+ * its conclusion, and the slug of the GitHub App that produced it (so a GitHub
+ * Actions CI run can be told apart from an external deploy integration).
+ */
+export interface BaseCheckRun {
+  /** The check-run name (e.g. the workflow / job name). */
+  name: string;
+  /** The check-run conclusion, or `null` while still in progress. */
+  conclusion: string | null;
+  /** The producing GitHub App's slug (e.g. `github-actions`, `vercel`), or `null`. */
+  appSlug: string | null;
+}
+
+/** True when a base check-run was produced by GitHub Actions (CI), not a deploy app. */
+export function isGitHubActionsCheck(check: BaseCheckRun): boolean {
+  return check.appSlug === GITHUB_ACTIONS_APP_SLUG;
+}
+
+/** True when a check-run's conclusion counts as a CI failure. */
+export function isFailingCiConclusion(conclusion: string | null): boolean {
+  return conclusion !== null && (FAILING_CI_CONCLUSIONS as readonly string[]).includes(conclusion);
+}
+
+/**
+ * The names of base checks that count as **failing CI**: produced by GitHub
+ * Actions AND concluded in a failing state. A failing *deploy* — any non-Actions
+ * producer, an external deploy integration or a GitHub Deployment status — is
+ * excluded by the `isGitHubActionsCheck` filter, so a red deploy under green
+ * Actions does not wedge the merge queue. Callers pass the base tip's checks
+ * already deduped to the latest run per name (the Checks API `?filter=latest`).
+ */
+export function failingBaseCiCheckNames(checks: readonly BaseCheckRun[]): string[] {
+  return checks
+    .filter((c) => isGitHubActionsCheck(c) && isFailingCiConclusion(c.conclusion))
+    .map((c) => c.name);
+}
+
 /** The PR's changed files that also changed on the base, preserving PR order. */
 export function overlappingFiles(
   prFiles: readonly string[],
@@ -130,12 +190,18 @@ export interface MergeSafetyFacts {
   fileOverlap: boolean;
   /** Git reports the PR as conflicting (`mergeable === 'CONFLICTING'`). */
   hasConflict: boolean;
+  /** The base branch tip has at least one failing GitHub Actions CI check. */
+  baseCiFailing: boolean;
+  /** The PR carries the `hotfix` label, exempting it from the base-CI-failing axis. */
+  prIsHotfix: boolean;
   /** The base commits since merge-base whose message marks a breaking change. */
   baseBreakingCommits: readonly BaseCommit[];
   /** The `ci`-typed base commits since merge-base. */
   baseCiCommits: readonly BaseCommit[];
   /** The PR's changed files that also changed on the base since merge-base. */
   overlappingFiles: readonly string[];
+  /** The names of the failing base CI checks, surfaced in the base-health reason. */
+  failingBaseChecks: readonly string[];
 }
 
 export type MergeSafetyConclusion = 'success' | 'failure';
@@ -147,10 +213,13 @@ export interface MergeSafetyDecision {
   needsUpdate: boolean;
   /** The PR has a hard git conflict (the mergeability axis). */
   hasConflict: boolean;
+  /** Blocked because the base's CI is failing and this PR is not a hotfix (the base-health axis). */
+  baseUnhealthy: boolean;
   /**
    * Short state phrase for the check-run title — the verdict at a glance. One of
-   * `No update required` / `Update required` / `Merge conflict` / `Could not
-   * evaluate`. The check-run *name* stays the stable `merge-safety` (so branch
+   * `No update required` / `Update required` / `Merge conflict` / `Base CI
+   * failing` / `Could not evaluate`. The check-run *name* stays the stable
+   * `merge-safety` (so branch
    * protection can match it); this varies with the outcome instead.
    */
   title: string;
@@ -173,6 +242,20 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
 
   if (facts.hasConflict) {
     reasons.push('Git reports a merge conflict against the base — resolve it before merging.');
+  }
+
+  // Base health is PR-independent: a red base blocks everything but a hotfix. It
+  // sits right after conflict (the other PR-independent block) and above the
+  // staleness reasons so its headline drives the summary when it is the top issue.
+  const baseUnhealthy = facts.baseCiFailing && !facts.prIsHotfix;
+  if (baseUnhealthy) {
+    reasons.push(
+      withDetail(
+        "The base branch's CI is failing — only hotfix PRs may merge until it is green " +
+          '(label this PR `hotfix` to override):',
+        facts.failingBaseChecks,
+      ),
+    );
   }
 
   const stale = !facts.isCurrent;
@@ -213,22 +296,25 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
       facts.fileOverlap);
 
   const conclusion: MergeSafetyConclusion =
-    needsUpdate || facts.hasConflict ? 'failure' : 'success';
+    needsUpdate || facts.hasConflict || baseUnhealthy ? 'failure' : 'success';
 
   // A reason may now carry nested detail bullets; the one-line summary takes only
   // its headline sentence, leaving the specifics to the full reasons list.
   const summary =
     conclusion === 'success'
-      ? 'No update required: current, or no breaking/overlapping changes on the base, and no conflict.'
+      ? 'No update required: current, or no breaking/overlapping changes on the base, no conflict, and the base CI is green.'
       : firstLine(reasons[0] ?? 'Not safe to merge as-is.');
 
   // Conflict is the more blocking, concrete problem, so it wins the title when a
-  // PR is both conflicting and stale; the summary still lists every reason.
+  // PR is both conflicting and stale; base health (also PR-independent) comes next,
+  // then staleness. The summary still lists every reason.
   const title = facts.hasConflict
     ? 'Merge conflict'
-    : needsUpdate
-      ? 'Update required'
-      : 'No update required';
+    : baseUnhealthy
+      ? 'Base CI failing'
+      : needsUpdate
+        ? 'Update required'
+        : 'No update required';
 
   const add: MergeSafetyLabel[] = [];
   if (needsUpdate) add.push('update required');
@@ -239,6 +325,7 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     conclusion,
     needsUpdate,
     hasConflict: facts.hasConflict,
+    baseUnhealthy,
     title,
     reasons,
     summary,
@@ -260,6 +347,7 @@ export function errorMergeSafetyDecision(message: string): MergeSafetyDecision {
     conclusion: 'failure',
     needsUpdate: false,
     hasConflict: false,
+    baseUnhealthy: false,
     title: 'Could not evaluate',
     reasons: [message],
     summary: `Could not evaluate merge safety: ${message}`,

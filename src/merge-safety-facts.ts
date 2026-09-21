@@ -7,16 +7,28 @@
  */
 import { boundedRun } from './lib/bounded-subprocess.js';
 import {
+  failingBaseCiCheckNames,
   isBreakingCommitMessage,
   isBreakingTitle,
   isCiCommitMessage,
   overlappingFiles,
+  HOTFIX_LABEL,
+  type BaseCheckRun,
   type BaseCommit,
   type MergeSafetyFacts,
 } from './merge-safety.js';
 
 /** Runs a `git` argv and yields stdout, or `null` on non-zero exit / failure. */
 export type GitRunner = (args: string[]) => Promise<string | null>;
+
+/**
+ * Fetches the base branch tip's check-runs (deduped to the latest per name) so
+ * base-health can be judged. Injected like {@link GitRunner} so the assembly logic
+ * stays testable with a fake and the network boundary lives in the bin. Soft-fails
+ * to `[]` (an unreadable base is treated as *not* failing) so a transient `gh`
+ * error never wedges the whole merge queue on a base-health false positive.
+ */
+export type BaseChecksProbe = (baseSha: string) => Promise<readonly BaseCheckRun[]>;
 
 const GIT_TIMEOUT_MS = 30_000;
 
@@ -41,6 +53,8 @@ export interface GatherOptions {
   /** Base branch ref to compare against (default `origin/main`). */
   baseRef?: string;
   git: GitRunner;
+  /** Probe for the base tip's check-runs, used to judge base health. */
+  baseChecks: BaseChecksProbe;
 }
 
 /** The `breaking change` label forces `prIsBreaking` regardless of the title. */
@@ -89,7 +103,7 @@ function selectCommits(
  */
 export async function gatherMergeSafetyFacts(
   meta: PrMergeMeta,
-  { baseRef = 'origin/main', git }: GatherOptions,
+  { baseRef = 'origin/main', git, baseChecks }: GatherOptions,
 ): Promise<MergeSafetyFacts> {
   const mergeBase = (await git(['merge-base', meta.headSha, baseRef]))?.trim();
   const baseTip = (await git(['rev-parse', baseRef]))?.trim();
@@ -98,6 +112,10 @@ export async function gatherMergeSafetyFacts(
   }
 
   const isCurrent = mergeBase === baseTip;
+
+  // Base health is judged against the base *tip* (resolved above), independent of
+  // this PR's diff — a red base blocks non-hotfix PRs regardless of staleness.
+  const failingBaseChecks = failingBaseCiCheckNames(await baseChecks(baseTip));
 
   // Capture each base commit's SHA (`%H`) alongside its body (`%B`) so a triggering
   // commit can be named in the report; `-z` NUL-terminates records for a clean split.
@@ -126,8 +144,11 @@ export async function gatherMergeSafetyFacts(
     prIsBreaking: isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL),
     fileOverlap: overlaps.length > 0,
     hasConflict: meta.mergeable.toUpperCase() === 'CONFLICTING',
+    baseCiFailing: failingBaseChecks.length > 0,
+    prIsHotfix: labels.includes(HOTFIX_LABEL),
     baseBreakingCommits,
     baseCiCommits,
     overlappingFiles: overlaps,
+    failingBaseChecks,
   };
 }

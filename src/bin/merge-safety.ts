@@ -18,9 +18,15 @@ import {
   evaluateMergeSafety,
   errorMergeSafetyDecision,
   isEvaluablePrState,
+  type BaseCheckRun,
   type MergeSafetyDecision,
 } from '../merge-safety.js';
-import { gatherMergeSafetyFacts, makeGitRunner, type PrMergeMeta } from '../merge-safety-facts.js';
+import {
+  gatherMergeSafetyFacts,
+  makeGitRunner,
+  type BaseChecksProbe,
+  type PrMergeMeta,
+} from '../merge-safety-facts.js';
 
 /** The conventional consumer caller filename the invalidate fan-out re-dispatches. */
 const DEFAULT_CALLER_WORKFLOW = 'merge-safety.yml';
@@ -86,6 +92,46 @@ async function ghJson<T>(argv: string[], cwd?: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * A real base-checks probe: fetch the base tip's check-runs from the GitHub Checks
+ * API (deduped to the latest run per name via `?filter=latest`) and reduce each to
+ * the {@link BaseCheckRun} shape base-health classifies. `--jq` streams the array
+ * as JSONL so `--paginate` can concatenate pages for a base with many checks.
+ * Soft-fails to `[]` on any read error, so a transient `gh` failure never becomes
+ * a base-health false positive that wedges the merge queue.
+ */
+export function makeBaseChecksProbe(repo: string, cwd?: string): BaseChecksProbe {
+  return async (baseSha) => {
+    const out = await ghCall(
+      {
+        argv: [
+          'gh',
+          'api',
+          '--paginate',
+          `repos/${repo}/commits/${baseSha}/check-runs?filter=latest`,
+          '--jq',
+          '.check_runs[] | {name: .name, conclusion: .conclusion, appSlug: .app.slug}',
+        ],
+      },
+      null,
+      { cwd },
+    );
+    if (!out) return [];
+    const checks: BaseCheckRun[] = [];
+    for (const line of out.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const c = JSON.parse(trimmed) as BaseCheckRun;
+        checks.push({ name: c.name, conclusion: c.conclusion, appSlug: c.appSlug });
+      } catch {
+        // Skip a malformed line rather than fail the whole probe.
+      }
+    }
+    return checks;
+  };
 }
 
 /** Post (create) a check-run on a head SHA. `conclusion` omitted → pending. */
@@ -178,6 +224,7 @@ export async function runEvaluate(repo: string, pr: number, args: Args): Promise
     const facts = await gatherMergeSafetyFacts(meta, {
       baseRef: args.baseRef,
       git: makeGitRunner(args.cwd),
+      baseChecks: makeBaseChecksProbe(repo, args.cwd),
     });
     decision = evaluateMergeSafety(facts);
   } catch (err) {
