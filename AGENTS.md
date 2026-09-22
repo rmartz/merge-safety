@@ -145,7 +145,13 @@ Most are enforced by eslint; the intent:
   incompatible changelog-preset/writer pairing fails the PR, not the post-merge run. It
   is a direct render — not a `semantic-release --dry-run`, which short-circuits before
   rendering on a PR event and, if forced past that, fails the read-only-token push check
-  on Dependabot/fork PRs).
+  on Dependabot/fork PRs). `Release notes render` is a **required status check** on `main`
+  (#46), so it actually blocks a merge — including Dependabot auto-merge, which gates only
+  on required checks — rather than merely going red on the PR. Being required also folds it
+  into merge-safety's own base-health axis (which reads the base's required status checks),
+  so this repo can finally see a broken changelog toolchain on its own base. The post-merge
+  `Release` publish job (release.yml) is deliberately **not** required — it is a push-only
+  publish, not a PR gate; the pre-merge render guard is its PR-time equivalent.
 
 ## Agent directive files
 
