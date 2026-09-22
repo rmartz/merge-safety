@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: What merge-safety is
-description: The pre-auto-merge safety verdict for a PR — the base-currency, breaking-change, CI-typed-PR, and conflict facts it gathers, and the check-run and labels it manages via evaluate and invalidate.
+description: The pre-auto-merge safety verdict for a PR — the base-currency, self-derived breaking-change, CI-typed-PR, and conflict facts it gathers, and the check-run and labels it manages via evaluate and invalidate.
 tags: [merge-safety, auto-merge, ci, overview]
 ---
 
@@ -24,6 +24,26 @@ gathers the safety **facts** for that one PR against its base:
 - **Base currency** — is the PR's branch behind its base in a way that matters?
 - **Breaking change** — did something merge into the base that this PR must be
   re-tested against (a breaking-change signal or a real file overlap)?
+- **Breaking change, PR-side — self-derived** — is _this PR_ a breaking change?
+  The PR title's `!` marker and a `breaking change` label are still read, but the
+  verdict no longer depends on them: it also reads the PR's **own diff** for a
+  dependency **major** version bump, a **CI-sensitive** linter/formatter version
+  change (`eslint`/`black`/`pylint`/`ruff`/`prettier` — any delta, since a
+  formatter release can redden the format gate on files a PR never touched), and
+  **material changes to existing test files** (both added _and_ removed lines,
+  i.e. changed expectations rather than appended tests). Before this, a required,
+  merge-gating check read that fact from a label an LLM turn writes, and failed
+  **permissively** when that turn had not run. The diff can only ever _add_ a
+  reason to treat a PR as breaking, so this is strictly additive.
+- **CI-sensitive bump without the `ci` type** — a linter/formatter bump must force
+  every in-flight sibling to re-test under it after merge, and only the merged
+  subject can carry that: a `ci` prefix, or a `!` marker. The `!` route is closed
+  here — merge stamps `!` only on functional types (`feat`/`fix`/`perf`/`revert`)
+  and **strips** a `breaking change` label off anything else — so on a non-`ci`
+  title there is no route at all. The check holds the PR and asks for the retitle
+  rather than applying a label that would be removed at merge. Unlike the staleness
+  clauses this applies even to an already-current PR: merging under the wrong title
+  loses the signal just as permanently.
 - **CI-typed PR** — is the PR's own title a `ci:`/`ci(scope):` conventional
   commit? A CI change is only as good as the base it last ran against, so a
   stale CI PR is forced current before merge, symmetric to the `prIsBreaking`
@@ -50,6 +70,18 @@ labels** that surface the reason to humans and to the coordinator — the
 update-required and merge-conflict labels — adding or removing each to match the
 current facts. (The base-health axis mints no label; the `hotfix` label is an
 _input_ it reads, and its outcome is carried by the check-run title/reason.)
+
+One label is handled differently. **`breaking change` is add-only**: the check
+applies it when the diff proves a dependency **major** bump _and_ the PR's title
+type is functional, so the label will survive to become a `!` on the squashed
+subject — and it **never removes it**, so a human's or an agent's explicit
+judgment is never silently reverted. It is deliberately _not_ applied for the
+other two diff signals: a CI-sensitive bump is answered by the `ci` retitle
+above, and a changed test expectation is a staleness signal rather than a public
+API break. Labelling either would stamp `!` on a functional-typed PR and fire a
+spurious semantic-release **major**. (Detection lives here; the title stamping
+stays in the coordinator's merge transaction, which is the only place that can
+rewrite a subject and holds the release-please exemption.)
 
 ## `invalidate` — the base moved (or its CI flipped)
 
