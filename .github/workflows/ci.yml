@@ -115,32 +115,26 @@ jobs:
             );
           '
 
-  release-dry-run:
-    name: Release dry-run
-    # Validate the semantic-release config — above all that the changelog toolchain
-    # (preset + conventional-changelog-writer) still renders — on PRs, so a broken
-    # release config is caught here rather than on the post-merge Release run (which
-    # only fires on push to main; see release.yml).
+  release-notes-render:
+    name: Release notes render
+    # Guard the release changelog toolchain: prove the installed preset +
+    # conventional-changelog-writer can actually render notes, so an incompatible
+    # pairing fails the PR here rather than on the post-merge Release run (which only
+    # fires on push to main; see release.yml). This is exactly the seam that a
+    # Dependabot bump of `conventional-changelog-conventionalcommits` past the writer
+    # semantic-release ships breaks.
     #
-    # A plain `semantic-release --dry-run` early-exits on a non-main branch before
-    # rendering notes, which would pass a broken config. We override --branches with
-    # the PR head ref (which exists on the remote, so semantic-release accepts it as a
-    # release branch) to force the analyzeCommits + generateNotes path; --dry-run
-    # guarantees nothing is published, tagged, or commented. Restricted to same-repo
-    # PRs because a fork's head branch does not exist on this remote.
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    # NOT a `semantic-release --dry-run`: semantic-release short-circuits before
+    # rendering notes on a pull_request event ("a new version won't be published"), so
+    # a dry-run never reaches generateNotes — a false pass. Defeating that
+    # short-circuit runs verifyConditions first, whose git push-permission check fails
+    # on the read-only GITHUB_TOKEN that Dependabot and fork PRs get, i.e. on precisely
+    # the bumps this guard must catch. The script invokes the genuine
+    # release-notes-generator render path directly — no token, no network, no push —
+    # so it works uniformly on every PR, including Dependabot's.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # semantic-release needs full history + tags
-          persist-credentials: false # authenticates via GITHUB_TOKEN below
       - uses: ./.github/actions/setup
-      - run: pnpm exec semantic-release --dry-run --branches "$HEAD_REF"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_REF: ${{ github.head_ref }}
+      - run: pnpm run verify:release-notes

@@ -26,6 +26,15 @@ updates:
       prefix: fix
       prefix-development: chore
       include: scope
+    ignore:
+      # The conventionalcommits preset major is coupled to conventional-changelog-writer,
+      # which we do not depend on directly — semantic-release ships it transitively. A
+      # preset major that outruns that writer cannot render (it broke every push to main
+      # once #39 bumped it 8 -> 10). Hold at the current major until semantic-release
+      # upgrades its writer, then bump the preset major deliberately alongside it. 9.x
+      # minor/patch updates still flow. The Release notes render CI guard is the backstop.
+      - dependency-name: conventional-changelog-conventionalcommits
+        update-types: [version-update:semver-major]
     groups:
       # Prettier isolated into its own group so a reformatting bump can't hide in a
       # catch-all (a Prettier minor can reformat the whole tree).

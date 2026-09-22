@@ -57,7 +57,7 @@ file as off-limits just because bootstrap once seeded it.
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
-  build / package / release-dry-run ([ci.yml](.github/workflows/ci.yml)), the PR-title
+  build / package / release-notes-render ([ci.yml](.github/workflows/ci.yml)), the PR-title
   lint, the post-merge commit-convention tripwire
   ([commit-convention.yml](.github/workflows/commit-convention.yml)), the automatic
   semantic-release release ([release.yml](.github/workflows/release.yml)), and the
@@ -139,9 +139,13 @@ Most are enforced by eslint; the intent:
   [pr-title-lint.yml](.github/workflows/pr-title-lint.yml) (pre-merge title format),
   [commit-convention.yml](.github/workflows/commit-convention.yml) (post-merge
   tripwire — a non-conventional subject reaching `main` makes semantic-release
-  silently skip), and the `release-dry-run` job in [ci.yml](.github/workflows/ci.yml)
-  (pre-merge — renders the notes so a broken release toolchain fails the PR, not the
-  post-merge run).
+  silently skip), and the `Release notes render` job in [ci.yml](.github/workflows/ci.yml)
+  (pre-merge — drives the real `@semantic-release/release-notes-generator` render path
+  via [scripts/verify-changelog-render.mjs](scripts/verify-changelog-render.mjs) so an
+  incompatible changelog-preset/writer pairing fails the PR, not the post-merge run. It
+  is a direct render — not a `semantic-release --dry-run`, which short-circuits before
+  rendering on a PR event and, if forced past that, fails the read-only-token push check
+  on Dependabot/fork PRs).
 
 ## Agent directive files
 
