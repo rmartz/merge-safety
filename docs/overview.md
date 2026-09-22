@@ -27,7 +27,10 @@ gathers the safety **facts** for that one PR against its base:
 - **CI-typed PR** — is the PR's own title a `ci:`/`ci(scope):` conventional
   commit? A CI change is only as good as the base it last ran against, so a
   stale CI PR is forced current before merge, symmetric to the `prIsBreaking`
-  clause.
+  clause — **unless it is a `hotfix`**, which exempts this clause so a CI fix for
+  a base whose own CI is red is not caught in a bind (the same escape hatch as
+  base health, below). The exemption is CI-clause-only: the breaking and base-side
+  clauses stay in force.
 - **Conflicts** — does the PR merge cleanly, or is there a conflict?
 - **Base health** — is the **base branch's own CI** failing? A red base blocks
   every PR **except a `hotfix`-labelled one**, so the fix for broken main still

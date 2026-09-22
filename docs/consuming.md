@@ -35,6 +35,15 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > so an investigating agent or human sees the reason and the override at the point
 > of failure, without consulting these docs. (Even so, `hotfix` should exist so
 > that override is actually applicable.)
+>
+> **`hotfix` also exempts a `ci`-typed PR from being forced current.** A `ci`-typed
+> PR is normally held until it is current with its base (so a CI guard is re-tested
+> against the latest base). That guard is unconditional — except for a `hotfix`,
+> which frees it: a CI fix for a base whose own CI is red would otherwise be caught
+> in a bind, since being forced current may be impossible or pointless while the
+> base is broken. The exemption is scoped to _this PR is itself CI_; it does **not**
+> relax the breaking-change clause or the base-side clauses (a hotfix that overlaps
+> real base changes still needs a rebase to merge cleanly).
 
 ## 1. Add the caller workflow
 
@@ -183,3 +192,18 @@ auto-merge wait for the safety verdict.
 **Auth:** the published `@rmartz/merge-safety` package is **public** on GitHub
 Packages, readable with the built-in `GITHUB_TOKEN` — the `packages: read`
 permission above is all the install needs, no per-repo PAT.
+
+> **A cancelled "superseded" run on the checks list is expected — it is not a
+> merge-safety failure.** A single PR action can fire several
+> `pull_request_target` events near-simultaneously (Dependabot opening a PR emits
+> `opened` + `labeled` once per label + often `edited`, all within ~1s). Those all
+> share the PR's serialized `concurrency` group, so only the newest run proceeds
+> and the superseded ones are **cancelled** — and a cancelled run renders red ✗ in
+> `gh pr checks` and the PR UI (historically as the misleadingly-named
+> `merge-safety / Invalidate open PRs (base moved)`). This is by design: cancelling
+> the superseded run is what makes the **last** event — with the final
+> label/title/base state — the one that posts the verdict (latest-wins). **Only the
+> single check-run named `merge-safety` gates the merge** (see
+> [the check-run contract](check-run-contract.md)); a cancelled superseded run is
+> never a required context and never blocks. If the named `merge-safety` check-run
+> is green, the safety verdict passed regardless of any cancelled sibling entries.

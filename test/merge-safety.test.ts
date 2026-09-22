@@ -418,6 +418,40 @@ describe('evaluateMergeSafety base health', () => {
     expect(d.reasons[0]).toMatch(/files the base also changed since merge-base/i); // …but not staleness
   });
 
+  it('exempts a stale hotfix PR that is itself a ci change from the prIsCi clause', () => {
+    const d = evaluateMergeSafety(makeFacts({ isCurrent: false, prIsCi: true, prIsHotfix: true }));
+    expect(d.conclusion).toBe('success');
+    expect(d.needsUpdate).toBe(false);
+    expect(d.labels.add).toEqual([]);
+    expect(d.reasons.some((r) => /this pr is a ci change/i.test(r))).toBe(false);
+  });
+
+  it('holds a stale hotfix ci PR when a base-side clause also fires — hotfix exempts only prIsCi', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({
+        isCurrent: false,
+        prIsCi: true,
+        prIsHotfix: true,
+        baseCiSinceMergeBase: true,
+        baseCiCommits: [{ sha: '1234567abcdef', subject: 'ci: add typecheck job' }],
+      }),
+    );
+    expect(d.conclusion).toBe('failure');
+    expect(d.needsUpdate).toBe(true);
+    // The prIsCi reason is suppressed, but the base-side ci clause still fires.
+    expect(d.reasons.some((r) => /this pr is a ci change/i.test(r))).toBe(false);
+    expect(d.reasons.some((r) => /a ci change landed on the base/i.test(r))).toBe(true);
+  });
+
+  it('still holds a stale hotfix PR that is itself a breaking change — hotfix does not exempt prIsBreaking', () => {
+    const d = evaluateMergeSafety(
+      makeFacts({ isCurrent: false, prIsBreaking: true, prIsHotfix: true }),
+    );
+    expect(d.conclusion).toBe('failure');
+    expect(d.needsUpdate).toBe(true);
+    expect(d.reasons.some((r) => /this pr is a breaking change/i.test(r))).toBe(true);
+  });
+
   it('lists the failing base checks as nested bullets under the base-health reason', () => {
     const d = evaluateMergeSafety(
       makeFacts({ baseCiFailing: true, failingBaseChecks: ['typecheck', 'lint'] }),

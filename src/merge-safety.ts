@@ -15,11 +15,19 @@
  *      coordinator rebases in-flight PRs past CI changes — see the `ci` prefix
  *      rebase rule), OR
  *   3. the PR is **itself** a breaking change, OR
- *   4. the PR is **itself** a `ci`-typed change — a CI guard is only as good as
- *      the base it last ran against, so a CI PR that was clean when it was opened
- *      must be re-tested against the current base to catch a pattern the guard
- *      protects against that has regressed on the base since (the symmetric
- *      partner to clause 2's base-side detection), OR
+ *   4. the PR is **itself** a `ci`-typed change **and is not a hotfix** — a CI
+ *      guard is only as good as the base it last ran against, so a CI PR that was
+ *      clean when it was opened must be re-tested against the current base to
+ *      catch a pattern the guard protects against that has regressed on the base
+ *      since (the symmetric partner to clause 2's base-side detection). The
+ *      `hotfix` label exempts *this* clause — a CI fix for a base whose own CI is
+ *      red can be caught in a bind (base health blocks it unless it is a hotfix,
+ *      and being forced current may itself be impossible or pointless while the
+ *      base is broken), so `hotfix` frees it here just as it frees the base-health
+ *      axis. The exemption is deliberately *this-PR-is-itself-CI*-only: it does
+ *      not touch clause 3 (`prIsBreaking`) or the base-side clauses (1, 2, 5),
+ *      which guard against real incompatibilities a hotfix must still rebase past,
+ *      OR
  *   5. the PR's changed files **intersect** the files changed on the base since
  *      merge-base.
  *
@@ -252,7 +260,12 @@ export interface MergeSafetyFacts {
   hasConflict: boolean;
   /** The base branch tip has at least one failing GitHub Actions CI check. */
   baseCiFailing: boolean;
-  /** The PR carries the `hotfix` label, exempting it from the base-CI-failing axis. */
+  /**
+   * The PR carries the `hotfix` label, exempting it from the base-CI-failing axis
+   * *and* from the `prIsCi` update-required clause (a hotfix CI fix for a red base
+   * is not forced current). It does not exempt `prIsBreaking` or the base-side
+   * clauses.
+   */
   prIsHotfix: boolean;
   /** The base commits since merge-base whose message marks a breaking change. */
   baseBreakingCommits: readonly BaseCommit[];
@@ -330,7 +343,7 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
   if (stale && facts.prIsBreaking) {
     reasons.push('This PR is a breaking change — it must be current with the base before merge.');
   }
-  if (stale && facts.prIsCi) {
+  if (stale && facts.prIsCi && !facts.prIsHotfix) {
     reasons.push(
       'This PR is a CI change — it must be current with the base before merge, so it is ' +
         're-tested against the latest base and cannot green a guard against a pattern that ' +
@@ -360,7 +373,7 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     (facts.baseBreakingSinceMergeBase ||
       facts.baseCiSinceMergeBase ||
       facts.prIsBreaking ||
-      facts.prIsCi ||
+      (facts.prIsCi && !facts.prIsHotfix) ||
       facts.fileOverlap);
 
   const conclusion: MergeSafetyConclusion =
