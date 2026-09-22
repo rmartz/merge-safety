@@ -7,7 +7,7 @@
  */
 import { boundedRun } from './lib/bounded-subprocess.js';
 import {
-  failingBaseCiCheckNames,
+  failingRequiredBaseChecks,
   isBreakingCommitMessage,
   isBreakingTitle,
   isCiCommitMessage,
@@ -31,7 +31,27 @@ export type GitRunner = (args: string[]) => Promise<string | null>;
  */
 export type BaseChecksProbe = (baseSha: string) => Promise<readonly BaseCheckRun[]>;
 
+/**
+ * Fetches the base branch's **required status check** contexts — the set base-health
+ * scopes failures to (#40). Returns `null` when protection can't be read (transient
+ * `gh` error, no ruleset, missing scope); a `null` or empty set means base-health
+ * reports no failure, so a probe hiccup never wedges the merge queue. Injected like
+ * {@link BaseChecksProbe}, with the network boundary in the bin.
+ */
+export type RequiredChecksProbe = (baseBranch: string) => Promise<readonly string[] | null>;
+
 const GIT_TIMEOUT_MS = 30_000;
+
+/**
+ * The plain branch name for a base ref (`origin/main` → `main`, `refs/heads/x` →
+ * `x`), as the required-status-checks API keys on the branch, not a remote-qualified
+ * ref. Only a leading `refs/heads/` or `origin/` is stripped — a non-`origin` remote
+ * would leave its prefix, in which case the required-checks probe soft-fails to
+ * `null` (no gate) rather than mis-querying.
+ */
+export function baseBranchName(baseRef: string): string {
+  return baseRef.replace(/^refs\/heads\//, '').replace(/^origin\//, '');
+}
 
 /** The real `git` runner, bounded and rooted at `cwd`. */
 export function makeGitRunner(cwd?: string): GitRunner {
@@ -56,6 +76,8 @@ export interface GatherOptions {
   git: GitRunner;
   /** Probe for the base tip's check-runs, used to judge base health. */
   baseChecks: BaseChecksProbe;
+  /** Probe for the base branch's required status checks, scoping base health (#40). */
+  requiredChecks: RequiredChecksProbe;
 }
 
 /** The `breaking change` label forces `prIsBreaking` regardless of the title. */
@@ -104,7 +126,7 @@ function selectCommits(
  */
 export async function gatherMergeSafetyFacts(
   meta: PrMergeMeta,
-  { baseRef = 'origin/main', git, baseChecks }: GatherOptions,
+  { baseRef = 'origin/main', git, baseChecks, requiredChecks }: GatherOptions,
 ): Promise<MergeSafetyFacts> {
   const mergeBase = (await git(['merge-base', meta.headSha, baseRef]))?.trim();
   const baseTip = (await git(['rev-parse', baseRef]))?.trim();
@@ -115,8 +137,13 @@ export async function gatherMergeSafetyFacts(
   const isCurrent = mergeBase === baseTip;
 
   // Base health is judged against the base *tip* (resolved above), independent of
-  // this PR's diff — a red base blocks non-hotfix PRs regardless of staleness.
-  const failingBaseChecks = failingBaseCiCheckNames(await baseChecks(baseTip));
+  // this PR's diff — a red base blocks non-hotfix PRs regardless of staleness. Only
+  // the base branch's *required* status checks count, so an arbitrary failing job
+  // (e.g. the native "Dependabot Updates" run) never wedges the queue (#40).
+  const failingBaseChecks = failingRequiredBaseChecks(
+    await baseChecks(baseTip),
+    await requiredChecks(baseBranchName(baseRef)),
+  );
 
   // Capture each base commit's SHA (`%H`) alongside its body (`%B`) so a triggering
   // commit can be named in the report; `-z` NUL-terminates records for a clean split.

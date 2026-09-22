@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   gatherMergeSafetyFacts,
+  baseBranchName,
   type BaseChecksProbe,
   type GitRunner,
   type PrMergeMeta,
+  type RequiredChecksProbe,
 } from '../src/merge-safety-facts.js';
 import type { BaseCheckRun } from '../src/merge-safety.js';
 
@@ -15,6 +17,11 @@ function fakeGit(responses: Record<string, string>): GitRunner {
 /** A base-checks probe that always returns the same list (base CI green by default). */
 function fakeChecks(checks: readonly BaseCheckRun[] = []): BaseChecksProbe {
   return async () => checks;
+}
+
+/** A required-checks probe returning a fixed set (default `null` → nothing gates). */
+function fakeRequired(contexts: readonly string[] | null = null): RequiredChecksProbe {
+  return async () => contexts;
 }
 
 const meta: PrMergeMeta = {
@@ -46,7 +53,11 @@ describe('gatherMergeSafetyFacts', () => {
       'diff --name-only BASE HEAD1': 'src/shared.ts\nsrc/b.ts',
     });
 
-    const facts = await gatherMergeSafetyFacts(meta, { git, baseChecks: fakeChecks() });
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git,
+      baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
+    });
 
     expect(facts.isCurrent).toBe(false);
     expect(facts.baseBreakingSinceMergeBase).toBe(true);
@@ -72,7 +83,11 @@ describe('gatherMergeSafetyFacts', () => {
       'diff --name-only BASE HEAD1': 'src/b.ts',
     });
 
-    const facts = await gatherMergeSafetyFacts(meta, { git, baseChecks: fakeChecks() });
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git,
+      baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
+    });
 
     // Subject is the first line; the footer on a later line still trips detection.
     expect(facts.baseBreakingCommits).toEqual([{ sha: 'sha-foot', subject: 'feat: add flag' }]);
@@ -87,7 +102,11 @@ describe('gatherMergeSafetyFacts', () => {
       'diff --name-only TIP HEAD1': 'src/b.ts',
     });
 
-    const facts = await gatherMergeSafetyFacts(meta, { git, baseChecks: fakeChecks() });
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git,
+      baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
+    });
 
     expect(facts.isCurrent).toBe(true);
     expect(facts.baseBreakingSinceMergeBase).toBe(false);
@@ -99,7 +118,7 @@ describe('gatherMergeSafetyFacts', () => {
   it('honors the breaking-change label and a CONFLICTING mergeable state', async () => {
     const facts = await gatherMergeSafetyFacts(
       { ...meta, labels: ['Breaking Change'], mergeable: 'conflicting' },
-      { git: cleanStaleGit(), baseChecks: fakeChecks() },
+      { git: cleanStaleGit(), baseChecks: fakeChecks(), requiredChecks: fakeRequired() },
     );
 
     expect(facts.prIsBreaking).toBe(true);
@@ -109,39 +128,56 @@ describe('gatherMergeSafetyFacts', () => {
   it('flags prIsCi from a ci-typed PR title (and not from a plain feat title)', async () => {
     const ci = await gatherMergeSafetyFacts(
       { ...meta, title: 'ci(tests): shard the suite' },
-      { git: cleanStaleGit(), baseChecks: fakeChecks() },
+      { git: cleanStaleGit(), baseChecks: fakeChecks(), requiredChecks: fakeRequired() },
     );
     expect(ci.prIsCi).toBe(true);
 
     const feat = await gatherMergeSafetyFacts(meta, {
       git: cleanStaleGit(),
       baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
     });
     expect(feat.prIsCi).toBe(false);
   });
 
-  it('flags base CI failing from a failing base Actions check, and probes the base tip', async () => {
+  it('flags base CI failing from a failing required base check, probing the base tip + branch', async () => {
     let probedSha: string | undefined;
+    let probedBranch: string | undefined;
     const baseChecks: BaseChecksProbe = async (sha) => {
       probedSha = sha;
-      return [{ name: 'typecheck', conclusion: 'failure', appSlug: 'github-actions' }];
+      return [{ name: 'typecheck', conclusion: 'failure' }];
+    };
+    const requiredChecks: RequiredChecksProbe = async (branch) => {
+      probedBranch = branch;
+      return ['typecheck'];
     };
 
-    const facts = await gatherMergeSafetyFacts(meta, { git: cleanStaleGit(), baseChecks });
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git: cleanStaleGit(),
+      baseChecks,
+      requiredChecks,
+    });
 
     expect(probedSha).toBe('TIP'); // judged against the base tip, not the merge-base
+    expect(probedBranch).toBe('main'); // required checks keyed on the plain branch name
     expect(facts.baseCiFailing).toBe(true);
     expect(facts.failingBaseChecks).toEqual(['typecheck']);
     expect(facts.prIsHotfix).toBe(false);
   });
 
-  it('does not flag base CI failing for a failing deploy under green Actions', async () => {
+  it('does not flag base CI failing for a failing check that is not a required context', async () => {
+    // A failing job the repo hasn't declared a merge gate (e.g. the native
+    // "Dependabot Updates" run) must not wedge the queue.
     const baseChecks = fakeChecks([
-      { name: 'Vercel', conclusion: 'failure', appSlug: 'vercel' },
-      { name: 'test', conclusion: 'success', appSlug: 'github-actions' },
+      { name: 'Dependabot', conclusion: 'failure' },
+      { name: 'test', conclusion: 'success' },
     ]);
 
-    const facts = await gatherMergeSafetyFacts(meta, { git: cleanStaleGit(), baseChecks });
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git: cleanStaleGit(),
+      baseChecks,
+      requiredChecks: fakeRequired(['test']),
+    });
 
     expect(facts.baseCiFailing).toBe(false);
     expect(facts.failingBaseChecks).toEqual([]);
@@ -150,7 +186,7 @@ describe('gatherMergeSafetyFacts', () => {
   it('reads the hotfix label case-insensitively', async () => {
     const facts = await gatherMergeSafetyFacts(
       { ...meta, labels: ['Hotfix'] },
-      { git: cleanStaleGit(), baseChecks: fakeChecks() },
+      { git: cleanStaleGit(), baseChecks: fakeChecks(), requiredChecks: fakeRequired() },
     );
 
     expect(facts.prIsHotfix).toBe(true);
@@ -158,9 +194,13 @@ describe('gatherMergeSafetyFacts', () => {
 
   it('throws when the merge-base cannot be resolved (caller must fail the check)', async () => {
     const git = fakeGit({ 'rev-parse origin/main': 'TIP' });
-    await expect(gatherMergeSafetyFacts(meta, { git, baseChecks: fakeChecks() })).rejects.toThrow(
-      /merge-base/,
-    );
+    await expect(
+      gatherMergeSafetyFacts(meta, {
+        git,
+        baseChecks: fakeChecks(),
+        requiredChecks: fakeRequired(),
+      }),
+    ).rejects.toThrow(/merge-base/);
   });
 
   it('throws when git log returns null — never silently produces false success', async () => {
@@ -171,9 +211,13 @@ describe('gatherMergeSafetyFacts', () => {
       'diff --name-only BASE origin/main': 'src/a.ts',
       'diff --name-only BASE HEAD1': 'src/b.ts',
     });
-    await expect(gatherMergeSafetyFacts(meta, { git, baseChecks: fakeChecks() })).rejects.toThrow(
-      /git log failed/,
-    );
+    await expect(
+      gatherMergeSafetyFacts(meta, {
+        git,
+        baseChecks: fakeChecks(),
+        requiredChecks: fakeRequired(),
+      }),
+    ).rejects.toThrow(/git log failed/);
   });
 
   it('throws when git diff returns null — never silently produces false success', async () => {
@@ -183,8 +227,20 @@ describe('gatherMergeSafetyFacts', () => {
       'log -z --format=%H%n%B BASE..origin/main': 'sha1\nfeat!: breaking',
       // diff keys absent → null
     });
-    await expect(gatherMergeSafetyFacts(meta, { git, baseChecks: fakeChecks() })).rejects.toThrow(
-      /git diff failed/,
-    );
+    await expect(
+      gatherMergeSafetyFacts(meta, {
+        git,
+        baseChecks: fakeChecks(),
+        requiredChecks: fakeRequired(),
+      }),
+    ).rejects.toThrow(/git diff failed/);
+  });
+});
+
+describe('baseBranchName', () => {
+  it('strips a remote or refs/heads prefix to the plain branch name', () => {
+    expect(baseBranchName('origin/main')).toBe('main');
+    expect(baseBranchName('refs/heads/release/1.x')).toBe('release/1.x');
+    expect(baseBranchName('main')).toBe('main');
   });
 });

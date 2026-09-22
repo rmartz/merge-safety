@@ -19,7 +19,7 @@ vi.mock('../src/merge-safety-facts.js', () => ({
   makeGitRunner: vi.fn(() => ({})),
 }));
 
-const { runEvaluate, runInvalidate, makeBaseChecksProbe } =
+const { runEvaluate, runInvalidate, makeBaseChecksProbe, makeRequiredChecksProbe } =
   await import('../src/bin/merge-safety.js');
 const { MERGE_SAFETY_CHECK_NAME } = await import('../src/index.js');
 
@@ -218,8 +218,8 @@ describe('runInvalidate', () => {
 describe('makeBaseChecksProbe', () => {
   it('queries the base tip check-runs (deduped to latest) and parses the JSONL', async () => {
     ghCall.mockResolvedValue(
-      '{"name":"typecheck","conclusion":"failure","appSlug":"github-actions"}\n' +
-        '{"name":"Vercel","conclusion":"success","appSlug":"vercel"}\n',
+      '{"name":"typecheck","conclusion":"failure"}\n' +
+        '{"name":"Vercel","conclusion":"success"}\n',
     );
     const checks = await makeBaseChecksProbe(REPO, '/wd')('BASESHA');
 
@@ -227,8 +227,8 @@ describe('makeBaseChecksProbe', () => {
     const argv = ghCall.mock.calls[0]![0].argv as string[];
     expect(argv.join(' ')).toContain('repos/o/r/commits/BASESHA/check-runs?filter=latest');
     expect(checks).toEqual([
-      { name: 'typecheck', conclusion: 'failure', appSlug: 'github-actions' },
-      { name: 'Vercel', conclusion: 'success', appSlug: 'vercel' },
+      { name: 'typecheck', conclusion: 'failure' },
+      { name: 'Vercel', conclusion: 'success' },
     ]);
   });
 
@@ -238,11 +238,38 @@ describe('makeBaseChecksProbe', () => {
   });
 
   it('skips a malformed JSONL line rather than throwing', async () => {
-    ghCall.mockResolvedValue(
-      'not json\n{"name":"test","conclusion":"success","appSlug":"github-actions"}\n',
-    );
+    ghCall.mockResolvedValue('not json\n{"name":"test","conclusion":"success"}\n');
     expect(await makeBaseChecksProbe(REPO)('BASESHA')).toEqual([
-      { name: 'test', conclusion: 'success', appSlug: 'github-actions' },
+      { name: 'test', conclusion: 'success' },
     ]);
+  });
+});
+
+describe('makeRequiredChecksProbe', () => {
+  it('queries the branch rules and returns the deduped required contexts', async () => {
+    ghCall.mockResolvedValue('typecheck\ntest\ntypecheck\nBuild\n');
+    const required = await makeRequiredChecksProbe(REPO, '/wd')('main');
+
+    const argv = ghCall.mock.calls[0]![0].argv as string[];
+    expect(argv.join(' ')).toContain('repos/o/r/rules/branches/main');
+    expect(argv.join(' ')).toContain('required_status_checks');
+    expect(required).toEqual(['typecheck', 'test', 'Build']);
+  });
+
+  it('URL-encodes a branch name with a slash', async () => {
+    ghCall.mockResolvedValue('');
+    await makeRequiredChecksProbe(REPO)('release/1.x');
+    const argv = ghCall.mock.calls[0]![0].argv as string[];
+    expect(argv.join(' ')).toContain('repos/o/r/rules/branches/release%2F1.x');
+  });
+
+  it('returns an empty set when the branch requires no status checks', async () => {
+    ghCall.mockResolvedValue('');
+    expect(await makeRequiredChecksProbe(REPO)('main')).toEqual([]);
+  });
+
+  it('soft-fails to null (nothing gates) when the read fails', async () => {
+    ghCall.mockResolvedValue(null);
+    expect(await makeRequiredChecksProbe(REPO)('main')).toBeNull();
   });
 });

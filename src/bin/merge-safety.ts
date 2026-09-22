@@ -26,6 +26,7 @@ import {
   makeGitRunner,
   type BaseChecksProbe,
   type PrMergeMeta,
+  type RequiredChecksProbe,
 } from '../merge-safety-facts.js';
 
 /** The conventional consumer caller filename the invalidate fan-out re-dispatches. */
@@ -112,7 +113,7 @@ export function makeBaseChecksProbe(repo: string, cwd?: string): BaseChecksProbe
           '--paginate',
           `repos/${repo}/commits/${baseSha}/check-runs?filter=latest`,
           '--jq',
-          '.check_runs[] | {name: .name, conclusion: .conclusion, appSlug: .app.slug}',
+          '.check_runs[] | {name: .name, conclusion: .conclusion}',
         ],
       },
       null,
@@ -125,12 +126,46 @@ export function makeBaseChecksProbe(repo: string, cwd?: string): BaseChecksProbe
       if (!trimmed) continue;
       try {
         const c = JSON.parse(trimmed) as BaseCheckRun;
-        checks.push({ name: c.name, conclusion: c.conclusion, appSlug: c.appSlug });
+        checks.push({ name: c.name, conclusion: c.conclusion });
       } catch {
         // Skip a malformed line rather than fail the whole probe.
       }
     }
     return checks;
+  };
+}
+
+/**
+ * A real required-checks probe: fetch the base branch's **required status check**
+ * contexts from the repository rulesets that apply to it (`/rules/branches/{branch}`,
+ * the endpoint that surfaces ruleset-declared rules the way this fleet configures
+ * them). `--jq` streams each `required_status_checks` rule's contexts as lines,
+ * deduped here. Soft-fails to `null` on any read error (no ruleset, missing scope,
+ * transient `gh` failure) so base-health degrades to "nothing gates" rather than
+ * wedging the queue on an unreadable protection config (#40).
+ */
+export function makeRequiredChecksProbe(repo: string, cwd?: string): RequiredChecksProbe {
+  return async (baseBranch) => {
+    const out = await ghCall(
+      {
+        argv: [
+          'gh',
+          'api',
+          '--paginate',
+          `repos/${repo}/rules/branches/${encodeURIComponent(baseBranch)}`,
+          '--jq',
+          '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context',
+        ],
+      },
+      null,
+      { cwd },
+    );
+    if (out === null) return null;
+    const contexts = out
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return [...new Set(contexts)];
   };
 }
 
@@ -225,6 +260,7 @@ export async function runEvaluate(repo: string, pr: number, args: Args): Promise
       baseRef: args.baseRef,
       git: makeGitRunner(args.cwd),
       baseChecks: makeBaseChecksProbe(repo, args.cwd),
+      requiredChecks: makeRequiredChecksProbe(repo, args.cwd),
     });
     decision = evaluateMergeSafety(facts);
   } catch (err) {
