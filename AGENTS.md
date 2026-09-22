@@ -121,13 +121,15 @@ Most are enforced by eslint; the intent:
   commit is its own pinned SHA** (`job.workflow_sha` → `vX.Y.Z` tag) — never from
   `package.json`, never duplicated into a workflow file. Config lives in
   [`.releaserc.json`](.releaserc.json).
-- **Version mapping (v0):** `feat:` → minor; `fix:` / `perf:` → patch; `chore(deps):`
-  (Dependabot) → patch. While pre-1.0 a **breaking change (`!`) is capped at a minor
-  bump** (the `{ "breaking": true, "release": "minor" }` rule) so an accidental `!`
-  can't auto-jump to `1.0.0`. `docs:` / `chore:` (non-deps) / `style:` / `refactor:` /
-  `test:` / `ci:` / `build:` do not release. **Leaving v0 is a deliberate act:** at
-  go-live, cut `1.0.0` manually (e.g. push a `v1.0.0` tag) and remove that cap rule so
-  `!` → major resumes.
+- **Version mapping (v0):** `feat:` → minor; `fix:` / `perf:` → patch. While pre-1.0 a
+  **breaking change (`!`) is capped at a minor bump** (the
+  `{ "breaking": true, "release": "minor" }` rule) so an accidental `!` can't auto-jump
+  to `1.0.0`. `docs:` / `chore:` (incl. `chore(deps):` — this package is
+  zero-runtime-dependency, so Dependabot bumps are dev-only and deliberately do **not**
+  release, matching `envctl`/`repo-hygiene`) / `style:` / `refactor:` / `test:` / `ci:`
+  / `build:` do not release. **Leaving v0 is a deliberate act:** at go-live, cut
+  `1.0.0` manually (e.g. push a `v1.0.0` tag) and remove that cap rule so `!` → major
+  resumes.
 - **Three release guards** back the automatic flow:
   [pr-title-lint.yml](.github/workflows/pr-title-lint.yml) (pre-merge title format),
   [commit-convention.yml](.github/workflows/commit-convention.yml) (post-merge
