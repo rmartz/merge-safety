@@ -17,10 +17,11 @@ name: merge-safety (reusable)
 #
 # Dependabot's github-actions ecosystem bumps that <sha> pin via PRs, so updates
 # propagate with no per-repo YAML edits. The @rmartz/merge-safety version this
-# workflow installs is resolved at runtime from this workflow's OWN pinned commit
-# (job.workflow_sha reads package.json), so the version lives only in package.json
-# and a pinned ref is fully reproducible — nothing ever writes a version into this
-# file. See docs/consuming.md.
+# workflow installs is resolved at runtime from the release tag whose commit is this
+# workflow's OWN pinned SHA (job.workflow_sha -> vX.Y.Z tag), so the version lives only
+# in the git tag and a pinned ref is fully reproducible — nothing ever writes a version
+# into this file, and semantic-release never commits a version bump back to main. See
+# docs/consuming.md.
 #
 # THE CHECK-RUN NAME `merge-safety` IS A FLEET CONTRACT. Every consumer configures
 # a required status check of that exact name and the auto-merge gate keys off it;
@@ -42,8 +43,8 @@ on:
       version:
         description: >-
           Optional @rmartz/merge-safety version override. Empty (the default)
-          resolves the version from this workflow's own pinned commit
-          (job.workflow_sha -> package.json), which is what keeps a SHA pin
+          resolves the version from the release tag at this workflow's own pinned
+          commit (job.workflow_sha -> vX.Y.Z tag), which is what keeps a SHA pin
           reproducible without hardcoding a version here.
         type: string
         required: false
@@ -100,18 +101,30 @@ jobs:
         id: ms
         env:
           OVERRIDE: ${{ inputs.version }}
+          WORKFLOW_REPO: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
           if [ -n "${OVERRIDE}" ]; then
             version="${OVERRIDE}"
           else
-            # job.workflow_sha / job.workflow_repository = THIS reusable workflow's
-            # own repo and the exact commit the consumer pinned (@<sha>), so the
-            # installed version is a pure function of the pinned ref (contents: read
-            # + the built-in GH_TOKEN suffice for the public repo).
-            version="$(gh api \
-              "repos/${{ job.workflow_repository }}/contents/package.json?ref=${{ job.workflow_sha }}" \
-              --jq '.content' | base64 --decode | jq -r .version)"
+            # Option B: the released version is the SOURCE OF TRUTH in the git tag, not
+            # package.json (semantic-release never commits the bump back — see
+            # release.yml). job.workflow_sha is the exact commit the consumer pinned
+            # (@<sha>); Dependabot only ever pins release-tag commits, so the version is
+            # the vX.Y.Z tag whose commit is that SHA (contents: read + the built-in
+            # GH_TOKEN suffice for the public repo). --paginate output is captured (not
+            # piped to head) so a closed pipe can't trip pipefail.
+            tags="$(gh api --paginate \
+              "repos/${WORKFLOW_REPO}/tags" \
+              --jq ".[] | select(.commit.sha == \"${WORKFLOW_SHA}\") | .name")"
+            version="${tags%%$'\n'*}"   # first matching tag name
+            version="${version#v}"      # strip the leading v
+            if [ -z "${version}" ]; then
+              echo "No release tag points at pinned commit ${WORKFLOW_SHA} in ${WORKFLOW_REPO}." >&2
+              echo "Dependabot pins release-tag commits; for a non-release SHA, set the 'version:' input." >&2
+              exit 1
+            fi
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Install ai-merge-safety
@@ -155,16 +168,26 @@ jobs:
         id: ms
         env:
           OVERRIDE: ${{ inputs.version }}
+          WORKFLOW_REPO: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
           if [ -n "${OVERRIDE}" ]; then
             version="${OVERRIDE}"
           else
-            # See the evaluate job — the version is resolved from this reusable
-            # workflow's own pinned commit, never hardcoded in this file.
-            version="$(gh api \
-              "repos/${{ job.workflow_repository }}/contents/package.json?ref=${{ job.workflow_sha }}" \
-              --jq '.content' | base64 --decode | jq -r .version)"
+            # See the evaluate job — the version is resolved from the release tag whose
+            # commit is this reusable workflow's own pinned SHA, never from package.json
+            # (which semantic-release leaves as a placeholder) or hardcoded in this file.
+            tags="$(gh api --paginate \
+              "repos/${WORKFLOW_REPO}/tags" \
+              --jq ".[] | select(.commit.sha == \"${WORKFLOW_SHA}\") | .name")"
+            version="${tags%%$'\n'*}"   # first matching tag name
+            version="${version#v}"      # strip the leading v
+            if [ -z "${version}" ]; then
+              echo "No release tag points at pinned commit ${WORKFLOW_SHA} in ${WORKFLOW_REPO}." >&2
+              echo "Dependabot pins release-tag commits; for a non-release SHA, set the 'version:' input." >&2
+              exit 1
+            fi
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Install ai-merge-safety

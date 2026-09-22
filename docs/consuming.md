@@ -147,10 +147,12 @@ updates:
 
 **Use a plain `# vX.Y.Z` version comment** on the pin — e.g.
 `…/merge-safety.yml@<sha> # v0.1.0`. This repo's releases are **tagged** plain
-`vX.Y.Z` (tag-driven — see the repo's Releases), so the pin comment matches the tag
-directly: that is what Dependabot's `github-actions` ecosystem needs to re-bump the
-SHA and refresh the comment together, and the form consumer pin-linters requiring a
-full `vMAJOR.MINOR.PATCH` comment accept.
+`vX.Y.Z` (cut automatically by semantic-release on push to `main` — see the repo's
+Releases), so the pin comment matches the tag directly: that is what Dependabot's
+`github-actions` ecosystem needs to re-bump the SHA and refresh the comment together,
+and the form consumer pin-linters requiring a full `vMAJOR.MINOR.PATCH` comment
+accept. The reusable workflow resolves which package version to install from the
+release tag at the SHA you pin, so the pinned SHA fully determines the behavior.
 
 > The very first release (`v0.1.0`) predates this and was tagged `merge-safety-v0.1.0`
 > (a release-please component tag); every release from `v0.1.1` on is a plain

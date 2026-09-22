@@ -1,6 +1,6 @@
 {
   "name": "@rmartz/merge-safety",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "The pre-auto-merge safety verdict for a PR (base-currency, breaking-change, and conflict facts), posted as the `merge-safety` check-run and distributed via a reusable workflow kept current by Dependabot.",
   "keywords": [
     "ci",
@@ -53,10 +53,12 @@
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.70.0",
     "@vitest/coverage-v8": "^5.0.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
     "eslint": "^10.10.0",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.32.0",
     "prettier": "^3.9.6",
+    "semantic-release": "^25.0.9",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
