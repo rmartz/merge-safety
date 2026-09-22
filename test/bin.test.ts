@@ -56,6 +56,7 @@ const facts = (over: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts => ({
   baseBreakingSinceMergeBase: false,
   baseCiSinceMergeBase: false,
   prIsBreaking: false,
+  prIsCi: false,
   fileOverlap: false,
   hasConflict: false,
   baseCiFailing: false,
