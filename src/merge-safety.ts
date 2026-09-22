@@ -66,38 +66,15 @@
  */
 
 import { firstLine } from './conventional-commits.js';
-import {
-  hasSignal,
-  signalDetail,
-  type BreakingDiffKind,
-  type BreakingDiffSignal,
-} from './breaking-diff.js';
 
-/** Human phrasing for each diff-derived breaking signal, used in the check-run reason. */
-const BREAKING_DIFF_REASONS: Record<BreakingDiffKind, string> = {
-  'major-version-bump': 'dependency major bump',
-  'sensitive-package-bump': 'CI-sensitive package version change',
-  'material-test-changes': 'existing test file modified',
-};
+export type { BaseCommit } from './reasons.js';
+import { stackedBaseReason } from './stacked-base.js';
+import { breakingSignalDetail, formatBaseCommit, withDetail, type BaseCommit } from './reasons.js';
+import { hasSignal, signalDetail, type BreakingDiffSignal } from './breaking-diff.js';
 
 /** Labels the check drives on a PR. Structural (`as const`) per repo convention. */
 export const MERGE_SAFETY_LABELS = ['update required', 'merge conflict'] as const;
 export type MergeSafetyLabel = (typeof MERGE_SAFETY_LABELS)[number];
-
-/** Nested markdown bullets, indented two spaces so they sit under a reason's `- `. */
-function nestedBullets(items: readonly string[]): string {
-  return items.map((item) => `  - ${item}`).join('\n');
-}
-
-/** `<short-sha> <subject>` — the one-line form a base commit takes in a reason. */
-function formatBaseCommit(commit: BaseCommit): string {
-  return `${commit.sha.slice(0, 7)} ${commit.subject}`;
-}
-
-/** A reason sentence, with its detail list (if any) appended as nested bullets. */
-function withDetail(sentence: string, detail: readonly string[]): string {
-  return detail.length ? `${sentence}\n${nestedBullets(detail)}` : sentence;
-}
 
 /**
  * True when a PR's state (`gh pr view --json state`: `OPEN` / `CLOSED` /
@@ -161,14 +138,6 @@ export function hasFileOverlap(prFiles: readonly string[], baseFiles: readonly s
   return overlappingFiles(prFiles, baseFiles).length > 0;
 }
 
-/** A base commit surfaced in a reason so the report names *which* commit triggered it. */
-export interface BaseCommit {
-  /** The full commit SHA (rendered abbreviated in the report). */
-  sha: string;
-  /** The commit subject (first line of its message). */
-  subject: string;
-}
-
 /**
  * The gathered facts a merge-safety verdict is computed from. The `*SinceMergeBase`
  * / `fileOverlap` booleans drive the verdict; the parallel `baseBreakingCommits` /
@@ -222,6 +191,14 @@ export interface MergeSafetyFacts {
    * where a label would be stripped at merge and the signal silently lost.
    */
   prMayCarryBreakingMarker: boolean;
+  /** The PR's base branch as a plain name (`main`, or a parent PR's head branch). */
+  baseBranch: string;
+  /**
+   * The open PR this one is stacked behind and must wait for, or `null` when it is
+   * free on that axis (#54). The gatherer has already applied the default-branch
+   * comparison and the exempt-accumulator policy, so the verdict reads one field.
+   */
+  stackedOnPr: number | null;
 }
 
 export type MergeSafetyConclusion = 'success' | 'failure';
@@ -242,9 +219,16 @@ export interface MergeSafetyDecision {
    */
   needsCiRetitle: boolean;
   /**
+   * The PR is stacked on another open PR and is held until that one merges (the
+   * stacked-base axis, #54). Mints no label — like base health, the outcome rides
+   * on the check-run title and reason.
+   */
+  stackedBarred: boolean;
+  /**
    * Short state phrase for the check-run title — the verdict at a glance. One of
    * `No update required` / `Update required` / `Merge conflict` / `Base CI
-   * failing` / `Retitle as a CI change` / `Could not evaluate`. The check-run
+   * failing` / `Base PR not merged` / `Retitle as a CI change` /
+   * `Could not evaluate`. The check-run
    * *name* stays the stable `merge-safety` (so branch
    * protection can match it); this varies with the outcome instead.
    */
@@ -280,6 +264,12 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     reasons.push('Git reports a merge conflict against the base — resolve it before merging.');
   }
 
+  // A stacked PR cannot merge before its base PR does, so the barrier sits with
+  // conflict at the top: both say "not now", regardless of staleness or base health.
+  const stackedOnPr = facts.stackedOnPr;
+  const stackedBarred = stackedOnPr !== null;
+  if (stackedOnPr !== null) reasons.push(stackedBaseReason(facts.baseBranch, stackedOnPr));
+
   // Base health is PR-independent: a red base blocks everything but a hotfix. It
   // sits right after conflict (the other PR-independent block) and above the
   // staleness reasons so its headline drives the summary when it is the top issue.
@@ -307,9 +297,7 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     reasons.push(
       withDetail(
         'This PR is a breaking change — it must be current with the base before merge.',
-        facts.prBreakingDiffSignals.flatMap((s) =>
-          s.detail.map((d) => `${BREAKING_DIFF_REASONS[s.kind]}: ${d}`),
-        ),
+        breakingSignalDetail(facts.prBreakingDiffSignals),
       ),
     );
   }
@@ -374,7 +362,9 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
   }
 
   const conclusion: MergeSafetyConclusion =
-    needsUpdate || facts.hasConflict || baseUnhealthy || needsCiRetitle ? 'failure' : 'success';
+    needsUpdate || facts.hasConflict || baseUnhealthy || needsCiRetitle || stackedBarred
+      ? 'failure'
+      : 'success';
 
   // A reason may now carry nested detail bullets; the one-line summary takes only
   // its headline sentence, leaving the specifics to the full reasons list.
@@ -388,13 +378,15 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
   // then staleness. The summary still lists every reason.
   const title = facts.hasConflict
     ? 'Merge conflict'
-    : baseUnhealthy
-      ? 'Base CI failing'
-      : needsUpdate
-        ? 'Update required'
-        : needsCiRetitle
-          ? 'Retitle as a CI change'
-          : 'No update required';
+    : stackedBarred
+      ? 'Base PR not merged'
+      : baseUnhealthy
+        ? 'Base CI failing'
+        : needsUpdate
+          ? 'Update required'
+          : needsCiRetitle
+            ? 'Retitle as a CI change'
+            : 'No update required';
 
   const add: MergeSafetyLabel[] = [];
   if (needsUpdate) add.push('update required');
@@ -421,6 +413,7 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     hasConflict: facts.hasConflict,
     baseUnhealthy,
     needsCiRetitle,
+    stackedBarred,
     title,
     reasons,
     summary,
@@ -444,6 +437,7 @@ export function errorMergeSafetyDecision(message: string): MergeSafetyDecision {
     hasConflict: false,
     baseUnhealthy: false,
     needsCiRetitle: false,
+    stackedBarred: false,
     title: 'Could not evaluate',
     reasons: [message],
     summary: `Could not evaluate merge safety: ${message}`,

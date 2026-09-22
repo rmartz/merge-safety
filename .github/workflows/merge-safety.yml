@@ -61,6 +61,16 @@ on:
         type: string
         required: false
         default: merge-safety.yml
+      stacked-base-exempt-labels:
+        description: >-
+          Comma-separated labels on a base branch's tracking PR that exempt its
+          child PRs from the stacked-PR merge barrier — a long-lived accumulator
+          a child may merge into rather than wait for. Defaults to the
+          coordinator's vocabulary; set to an empty string to bar every stacked
+          PR unconditionally.
+        type: string
+        required: false
+        default: release,epic
 
 permissions:
   checks: write # post/flip the merge-safety check-run
@@ -97,6 +107,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
       BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+      # The stacked-PR barrier compares BASE_REF against this; a PR based on another
+      # open PR's head is held until that PR merges. Passed explicitly so the check
+      # never has to guess, and so a dispatched run resolves it identically.
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      EXEMPT_BASE_LABELS: ${{ inputs.stacked-base-exempt-labels }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,7 +161,10 @@ jobs:
       # Fetch the PR head as git data so merge-base/diffs resolve — the dispatched
       # (workflow_dispatch) path checks out the base and would otherwise lack it.
       - run: git fetch --quiet origin "${BASE_REF}" "pull/${PR_NUMBER}/head"
-      - run: ai-merge-safety evaluate --pr "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --base "origin/${BASE_REF}"
+      - run: >-
+          ai-merge-safety evaluate --pr "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}"
+          --base "origin/${BASE_REF}" --default-branch "${DEFAULT_BRANCH}"
+          --exempt-base-labels "${EXEMPT_BASE_LABELS}"
 
   invalidate:
     name: Invalidate open PRs (base moved)

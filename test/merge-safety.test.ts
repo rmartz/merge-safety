@@ -38,6 +38,8 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
     failingBaseChecks: [],
     prBreakingDiffSignals: [],
     prMayCarryBreakingMarker: false,
+    baseBranch: 'main',
+    stackedOnPr: null,
     ...overrides,
   };
 }
@@ -656,3 +658,51 @@ describe('evaluateMergeSafety — the retitle axis (#53)', () => {
 function firstLineOf(text: string): string {
   return text.split('\n', 1)[0] ?? '';
 }
+
+describe('evaluateMergeSafety — the stacked-base barrier (#54)', () => {
+  const child = (over: Partial<MergeSafetyFacts> = {}) =>
+    makeFacts({ baseBranch: 'issue-53-foo', stackedOnPr: 42, ...over });
+
+  it('holds a stacked PR that is otherwise perfectly mergeable', () => {
+    const d = evaluateMergeSafety(child());
+    expect(d.stackedBarred).toBe(true);
+    expect(d.conclusion).toBe('failure');
+    expect(d.title).toBe('Base PR not merged');
+    expect(d.needsUpdate).toBe(false);
+    expect(d.summary).toContain('#42');
+  });
+
+  it('mints no label — the outcome rides on the title and reason, like base health', () => {
+    const d = evaluateMergeSafety(child());
+    expect(d.labels.add).toEqual([]);
+    expect(d.labels.addOnly).toEqual([]);
+    expect(d.labels.remove).toEqual([...MERGE_SAFETY_LABELS]);
+  });
+
+  it('passes a PR that is not stacked', () => {
+    const d = evaluateMergeSafety(makeFacts({ stackedOnPr: null }));
+    expect(d.stackedBarred).toBe(false);
+    expect(d.conclusion).toBe('success');
+  });
+
+  it('yields the title to a conflict — the more concrete blocker still leads', () => {
+    const d = evaluateMergeSafety(child({ hasConflict: true }));
+    expect(d.title).toBe('Merge conflict');
+    expect(d.stackedBarred).toBe(true);
+  });
+
+  it('outranks base health and staleness in the title', () => {
+    const d = evaluateMergeSafety(
+      child({ baseCiFailing: true, isCurrent: false, fileOverlap: true }),
+    );
+    expect(d.title).toBe('Base PR not merged');
+    // Every axis still reports independently, and the summary tracks reasons[0].
+    expect(d.baseUnhealthy).toBe(true);
+    expect(d.needsUpdate).toBe(true);
+    expect(firstLineOf(d.summary)).toBe(firstLineOf(d.reasons[0] ?? ''));
+  });
+
+  it('is reported false on the ungatherable fail-safe verdict', () => {
+    expect(errorMergeSafetyDecision('boom').stackedBarred).toBe(false);
+  });
+});
