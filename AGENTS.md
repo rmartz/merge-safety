@@ -128,7 +128,7 @@ Most are enforced by eslint; the intent:
   `test:` / `ci:` / `build:` do not release. **Leaving v0 is a deliberate act:** at
   go-live, cut `1.0.0` manually (e.g. push a `v1.0.0` tag) and remove that cap rule so
   `!` → major resumes.
-- **Two release guards** back the automatic flow:
+- **Three release guards** back the automatic flow:
   [pr-title-lint.yml](.github/workflows/pr-title-lint.yml) (pre-merge title format),
   [commit-convention.yml](.github/workflows/commit-convention.yml) (post-merge
   tripwire — a non-conventional subject reaching `main` makes semantic-release
