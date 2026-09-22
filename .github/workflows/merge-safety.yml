@@ -73,7 +73,17 @@ concurrency:
   # push and a base-branch check_suite completion both fan out (invalidate), so they
   # share one serialized group; PR events key on the PR number.
   group: merge-safety-${{ (github.event_name == 'push' || github.event_name == 'check_suite') && 'invalidate' || github.event.pull_request.number || inputs.pr }}
-  cancel-in-progress: false
+  # PR events supersede; the invalidate fan-out serializes. A single Dependabot
+  # action fires a burst of pull_request_target events (opened + labeled×N +
+  # edited within ~1s); with cancel-in-progress:false those queue one run and
+  # leave the previously-pending ones *cancelled*, which renders as a spurious red
+  # `Invalidate open PRs (base moved)` entry on the consumer PR (issue #33).
+  # Cancelling the in-flight PR run when a newer event supersedes it reads as
+  # "superseded" instead, and still preserves latest-wins — the newest event
+  # (final label/title/base state) is always the run that posts the check-run.
+  # The invalidate group keeps `false`: its base-moved fan-out must serialize and
+  # never be cancelled, so no base move is ever dropped.
+  cancel-in-progress: ${{ github.event_name != 'push' && github.event_name != 'check_suite' }}
 
 jobs:
   evaluate:
