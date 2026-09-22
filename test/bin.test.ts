@@ -218,8 +218,8 @@ describe('runInvalidate', () => {
 describe('makeBaseChecksProbe', () => {
   it('queries the base tip check-runs (deduped to latest) and parses the JSONL', async () => {
     ghCall.mockResolvedValue(
-      '{"name":"typecheck","conclusion":"failure"}\n' +
-        '{"name":"Vercel","conclusion":"success"}\n',
+      '{"name":"typecheck","conclusion":"failure","appSlug":"github-actions"}\n' +
+        '{"name":"Vercel","conclusion":"success","appSlug":"vercel"}\n',
     );
     const checks = await makeBaseChecksProbe(REPO, '/wd')('BASESHA');
 
@@ -227,8 +227,8 @@ describe('makeBaseChecksProbe', () => {
     const argv = ghCall.mock.calls[0]![0].argv as string[];
     expect(argv.join(' ')).toContain('repos/o/r/commits/BASESHA/check-runs?filter=latest');
     expect(checks).toEqual([
-      { name: 'typecheck', conclusion: 'failure' },
-      { name: 'Vercel', conclusion: 'success' },
+      { name: 'typecheck', conclusion: 'failure', appSlug: 'github-actions' },
+      { name: 'Vercel', conclusion: 'success', appSlug: 'vercel' },
     ]);
   });
 
@@ -238,9 +238,11 @@ describe('makeBaseChecksProbe', () => {
   });
 
   it('skips a malformed JSONL line rather than throwing', async () => {
-    ghCall.mockResolvedValue('not json\n{"name":"test","conclusion":"success"}\n');
+    ghCall.mockResolvedValue(
+      'not json\n{"name":"test","conclusion":"success","appSlug":"github-actions"}\n',
+    );
     expect(await makeBaseChecksProbe(REPO)('BASESHA')).toEqual([
-      { name: 'test', conclusion: 'success' },
+      { name: 'test', conclusion: 'success', appSlug: 'github-actions' },
     ]);
   });
 });

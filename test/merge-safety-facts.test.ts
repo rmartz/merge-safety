@@ -145,7 +145,7 @@ describe('gatherMergeSafetyFacts', () => {
     let probedBranch: string | undefined;
     const baseChecks: BaseChecksProbe = async (sha) => {
       probedSha = sha;
-      return [{ name: 'typecheck', conclusion: 'failure' }];
+      return [{ name: 'typecheck', conclusion: 'failure', appSlug: 'github-actions' }];
     };
     const requiredChecks: RequiredChecksProbe = async (branch) => {
       probedBranch = branch;
@@ -169,8 +169,8 @@ describe('gatherMergeSafetyFacts', () => {
     // A failing job the repo hasn't declared a merge gate (e.g. the native
     // "Dependabot Updates" run) must not wedge the queue.
     const baseChecks = fakeChecks([
-      { name: 'Dependabot', conclusion: 'failure' },
-      { name: 'test', conclusion: 'success' },
+      { name: 'Dependabot', conclusion: 'failure', appSlug: 'github-actions' },
+      { name: 'test', conclusion: 'success', appSlug: 'github-actions' },
     ]);
 
     const facts = await gatherMergeSafetyFacts(meta, {
@@ -181,6 +181,25 @@ describe('gatherMergeSafetyFacts', () => {
 
     expect(facts.baseCiFailing).toBe(false);
     expect(facts.failingBaseChecks).toEqual([]);
+  });
+
+  it('falls back to the failing-Actions heuristic when the required set is unreadable', async () => {
+    // No queryable ruleset (requiredChecks → null): a failing Actions build still
+    // blocks, but the non-build Dependabot job is excluded by the denylist (#40).
+    const baseChecks = fakeChecks([
+      { name: 'Dependabot', conclusion: 'failure', appSlug: 'github-actions' },
+      { name: 'typecheck', conclusion: 'failure', appSlug: 'github-actions' },
+      { name: 'Vercel', conclusion: 'failure', appSlug: 'vercel' },
+    ]);
+
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git: cleanStaleGit(),
+      baseChecks,
+      requiredChecks: fakeRequired(null),
+    });
+
+    expect(facts.baseCiFailing).toBe(true);
+    expect(facts.failingBaseChecks).toEqual(['typecheck']);
   });
 
   it('reads the hotfix label case-insensitively', async () => {

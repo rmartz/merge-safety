@@ -7,6 +7,7 @@
  */
 import { boundedRun } from './lib/bounded-subprocess.js';
 import {
+  failingFallbackBaseChecks,
   failingRequiredBaseChecks,
   isBreakingCommitMessage,
   isBreakingTitle,
@@ -139,11 +140,16 @@ export async function gatherMergeSafetyFacts(
   // Base health is judged against the base *tip* (resolved above), independent of
   // this PR's diff — a red base blocks non-hotfix PRs regardless of staleness. Only
   // the base branch's *required* status checks count, so an arbitrary failing job
-  // (e.g. the native "Dependabot Updates" run) never wedges the queue (#40).
-  const failingBaseChecks = failingRequiredBaseChecks(
-    await baseChecks(baseTip),
-    await requiredChecks(baseBranchName(baseRef)),
-  );
+  // (e.g. the native "Dependabot Updates" run) never wedges the queue (#40). When
+  // that required set can't be read (no ruleset / transient error), fall back to the
+  // failing-Actions heuristic (minus the non-build denylist) so a genuinely broken
+  // base is still caught in repos without a queryable ruleset.
+  const checks = await baseChecks(baseTip);
+  const required = await requiredChecks(baseBranchName(baseRef));
+  const failingBaseChecks =
+    required && required.length > 0
+      ? failingRequiredBaseChecks(checks, required)
+      : failingFallbackBaseChecks(checks);
 
   // Capture each base commit's SHA (`%H`) alongside its body (`%B`) so a triggering
   // commit can be named in the report; `-z` NUL-terminates records for a clean split.

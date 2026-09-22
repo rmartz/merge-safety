@@ -7,7 +7,10 @@ import {
   isCiTitle,
   isEvaluablePrState,
   isFailingCiConclusion,
+  isGitHubActionsCheck,
+  isNonBuildPlatformCheck,
   failingRequiredBaseChecks,
+  failingFallbackBaseChecks,
   hasFileOverlap,
   overlappingFiles,
   evaluateMergeSafety,
@@ -36,9 +39,9 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
   };
 }
 
-/** A base check-run; defaults to a passing run named `test`. Override per test. */
+/** A base check-run; defaults to a passing GitHub Actions run named `test`. Override per test. */
 function check(overrides: Partial<BaseCheckRun> = {}): BaseCheckRun {
-  return { name: 'test', conclusion: 'success', ...overrides };
+  return { name: 'test', conclusion: 'success', appSlug: 'github-actions', ...overrides };
 }
 
 describe('isBreakingCommitMessage', () => {
@@ -124,6 +127,24 @@ describe('hasFileOverlap', () => {
   });
 });
 
+describe('isGitHubActionsCheck', () => {
+  it('is true only for the github-actions app slug', () => {
+    expect(isGitHubActionsCheck(check({ appSlug: 'github-actions' }))).toBe(true);
+    expect(isGitHubActionsCheck(check({ appSlug: 'vercel' }))).toBe(false);
+    expect(isGitHubActionsCheck(check({ appSlug: null }))).toBe(false);
+  });
+});
+
+describe('isNonBuildPlatformCheck', () => {
+  it('matches the Dependabot job case-insensitively, and nothing else', () => {
+    expect(isNonBuildPlatformCheck('Dependabot')).toBe(true);
+    expect(isNonBuildPlatformCheck('dependabot')).toBe(true);
+    expect(isNonBuildPlatformCheck('Dependabot Updates')).toBe(true);
+    expect(isNonBuildPlatformCheck('typecheck')).toBe(false);
+    expect(isNonBuildPlatformCheck('Build')).toBe(false);
+  });
+});
+
 describe('isFailingCiConclusion', () => {
   it('treats failure / timed_out / startup_failure as failing (expansive)', () => {
     expect(isFailingCiConclusion('failure')).toBe(true);
@@ -195,6 +216,41 @@ describe('failingRequiredBaseChecks', () => {
     expect(
       failingRequiredBaseChecks([check({ name: 'test', conclusion: 'success' })], required),
     ).toEqual([]);
+  });
+});
+
+describe('failingFallbackBaseChecks', () => {
+  it('returns the names of failing GitHub Actions checks', () => {
+    expect(
+      failingFallbackBaseChecks([
+        check({ name: 'typecheck', conclusion: 'failure' }),
+        check({ name: 'test', conclusion: 'success' }),
+        check({ name: 'lint', conclusion: 'timed_out' }),
+      ]),
+    ).toEqual(['typecheck', 'lint']);
+  });
+
+  it('ignores a failing DEPLOY (non-Actions producer) even when it is red', () => {
+    // A red deploy under green Actions is likely external and must not wedge the queue.
+    expect(
+      failingFallbackBaseChecks([
+        check({ name: 'Vercel', conclusion: 'failure', appSlug: 'vercel' }),
+        check({ name: 'test', conclusion: 'success' }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('ignores a failing non-build platform job (the Dependabot false positive from #40)', () => {
+    expect(
+      failingFallbackBaseChecks([
+        check({ name: 'Dependabot', conclusion: 'failure' }),
+        check({ name: 'typecheck', conclusion: 'failure' }),
+      ]),
+    ).toEqual(['typecheck']);
+  });
+
+  it('is empty when every Actions check is green', () => {
+    expect(failingFallbackBaseChecks([check({ conclusion: 'success' })])).toEqual([]);
   });
 });
 

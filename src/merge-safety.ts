@@ -116,15 +116,41 @@ const FAILING_CI_CONCLUSIONS = ['failure', 'timed_out', 'startup_failure'] as co
 /** The label a PR carries to declare itself a broken-main fix, exempt from base health. */
 export const HOTFIX_LABEL = 'hotfix';
 
+/** The GitHub App slug that produces GitHub Actions check-runs (i.e. CI). */
+const GITHUB_ACTIONS_APP_SLUG = 'github-actions';
+
+/**
+ * Check-run names that are GitHub Actions runs but *not* build/merge gates, so the
+ * {@link failingFallbackBaseChecks} heuristic never treats them as a broken base.
+ * The native "Dependabot Updates" job (posted as a check-run named `Dependabot`) is
+ * the motivating case (#40): it fails on dependency-resolution errors unrelated to
+ * whether the base builds. Matched case-insensitively.
+ */
+const NON_BUILD_PLATFORM_CHECKS = new Set(['dependabot', 'dependabot updates']);
+
 /**
  * A base-tip check-run reduced to what base-health classification needs: its name
- * (matched against the base branch's required status checks) and its conclusion.
+ * (matched against the base branch's required status checks), its conclusion, and
+ * the slug of the producing GitHub App (used by the fallback heuristic to tell a
+ * GitHub Actions CI run from an external deploy integration).
  */
 export interface BaseCheckRun {
   /** The check-run name (e.g. the workflow / job name), matched to a required context. */
   name: string;
   /** The check-run conclusion, or `null` while still in progress. */
   conclusion: string | null;
+  /** The producing GitHub App's slug (e.g. `github-actions`, `vercel`), or `null`. */
+  appSlug: string | null;
+}
+
+/** True when a base check-run was produced by GitHub Actions (CI), not a deploy app. */
+export function isGitHubActionsCheck(check: BaseCheckRun): boolean {
+  return check.appSlug === GITHUB_ACTIONS_APP_SLUG;
+}
+
+/** True when a check-run's name is a known non-build platform job (e.g. Dependabot). */
+export function isNonBuildPlatformCheck(name: string): boolean {
+  return NON_BUILD_PLATFORM_CHECKS.has(name.trim().toLowerCase());
 }
 
 /** True when a check-run's conclusion counts as a CI failure. */
@@ -154,6 +180,28 @@ export function failingRequiredBaseChecks(
   const required = new Set(requiredContexts);
   return checks
     .filter((c) => required.has(c.name) && isFailingCiConclusion(c.conclusion))
+    .map((c) => c.name);
+}
+
+/**
+ * The fallback base-health classifier, used when the base branch's required-status-check
+ * set can't be read ({@link failingRequiredBaseChecks} preferred whenever it can).
+ * Without a declared gate set to intersect, it approximates one: a failing **GitHub
+ * Actions** run counts, except a known non-build platform job (the Dependabot job —
+ * the #40 false positive this whole change targets) and any non-Actions producer (an
+ * external deploy), so a red deploy under green Actions still doesn't wedge the queue.
+ * Coarser than the required-check test, but it keeps a genuinely broken base caught in
+ * repos with no queryable ruleset. Callers pass the base tip's checks deduped to the
+ * latest run per name (the Checks API `?filter=latest`).
+ */
+export function failingFallbackBaseChecks(checks: readonly BaseCheckRun[]): string[] {
+  return checks
+    .filter(
+      (c) =>
+        isGitHubActionsCheck(c) &&
+        isFailingCiConclusion(c.conclusion) &&
+        !isNonBuildPlatformCheck(c.name),
+    )
     .map((c) => c.name);
 }
 
