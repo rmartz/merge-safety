@@ -35,6 +35,15 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > so an investigating agent or human sees the reason and the override at the point
 > of failure, without consulting these docs. (Even so, `hotfix` should exist so
 > that override is actually applicable.)
+>
+> **`hotfix` also exempts a `ci`-typed PR from being forced current.** A `ci`-typed
+> PR is normally held until it is current with its base (so a CI guard is re-tested
+> against the latest base). That guard is unconditional — except for a `hotfix`,
+> which frees it: a CI fix for a base whose own CI is red would otherwise be caught
+> in a bind, since being forced current may be impossible or pointless while the
+> base is broken. The exemption is scoped to _this PR is itself CI_; it does **not**
+> relax the breaking-change clause or the base-side clauses (a hotfix that overlaps
+> real base changes still needs a rebase to merge cleanly).
 
 ## 1. Add the caller workflow
 
