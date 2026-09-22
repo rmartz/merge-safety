@@ -4,6 +4,7 @@ import {
   isBreakingCommitMessage,
   isCiCommitMessage,
   isBreakingTitle,
+  isCiTitle,
   isEvaluablePrState,
   isGitHubActionsCheck,
   isFailingCiConclusion,
@@ -23,6 +24,7 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
     baseBreakingSinceMergeBase: false,
     baseCiSinceMergeBase: false,
     prIsBreaking: false,
+    prIsCi: false,
     fileOverlap: false,
     hasConflict: false,
     baseCiFailing: false,
@@ -73,6 +75,18 @@ describe('isBreakingTitle', () => {
   it('mirrors the subject-marker rule on a PR title', () => {
     expect(isBreakingTitle('feat(worktree)!: change default base')).toBe(true);
     expect(isBreakingTitle('chore: bump deps')).toBe(false);
+  });
+});
+
+describe('isCiTitle', () => {
+  it('detects a ci-typed PR title with and without a scope', () => {
+    expect(isCiTitle('ci: add typecheck job')).toBe(true);
+    expect(isCiTitle('ci(tests): shard the suite')).toBe(true);
+  });
+
+  it('is false for non-ci titles, including ones that merely mention ci', () => {
+    expect(isCiTitle('feat: wire up cico pipeline')).toBe(false);
+    expect(isCiTitle('fix(ci-helper): typo')).toBe(false);
   });
 });
 
@@ -199,6 +213,19 @@ describe('evaluateMergeSafety', () => {
     const d = evaluateMergeSafety(makeFacts({ isCurrent: false, baseCiSinceMergeBase: true }));
     expect(d.conclusion).toBe('failure');
     expect(d.needsUpdate).toBe(true);
+  });
+
+  it('fails a stale PR that is itself a ci change', () => {
+    const d = evaluateMergeSafety(makeFacts({ isCurrent: false, prIsCi: true }));
+    expect(d.conclusion).toBe('failure');
+    expect(d.needsUpdate).toBe(true);
+    expect(d.reasons.some((r) => /this pr is a ci change/i.test(r))).toBe(true);
+  });
+
+  it('passes a current PR that is itself a ci change', () => {
+    const d = evaluateMergeSafety(makeFacts({ isCurrent: true, prIsCi: true }));
+    expect(d.conclusion).toBe('success');
+    expect(d.needsUpdate).toBe(false);
   });
 
   it('fails a stale PR only via file overlap (the narrowing clause)', () => {
