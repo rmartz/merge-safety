@@ -193,17 +193,23 @@ auto-merge wait for the safety verdict.
 Packages, readable with the built-in `GITHUB_TOKEN` — the `packages: read`
 permission above is all the install needs, no per-repo PAT.
 
-> **A cancelled "superseded" run on the checks list is expected — it is not a
-> merge-safety failure.** A single PR action can fire several
-> `pull_request_target` events near-simultaneously (Dependabot opening a PR emits
-> `opened` + `labeled` once per label + often `edited`, all within ~1s). Those all
-> share the PR's serialized `concurrency` group, so only the newest run proceeds
-> and the superseded ones are **cancelled** — and a cancelled run renders red ✗ in
-> `gh pr checks` and the PR UI (historically as the misleadingly-named
-> `merge-safety / Invalidate open PRs (base moved)`). This is by design: cancelling
-> the superseded run is what makes the **last** event — with the final
-> label/title/base state — the one that posts the verdict (latest-wins). **Only the
-> single check-run named `merge-safety` gates the merge** (see
-> [the check-run contract](check-run-contract.md)); a cancelled superseded run is
-> never a required context and never blocks. If the named `merge-safety` check-run
-> is green, the safety verdict passed regardless of any cancelled sibling entries.
+> **Several overlapping `merge-safety` runs on one PR are expected.** A single PR
+> action can fire several `pull_request_target` events near-simultaneously
+> (Dependabot opening a PR emits `opened` + `labeled` once per label + often
+> `edited`, all within ~1s), and each one starts its own run. They are allowed to
+> overlap: the reusable workflow declares **no per-PR `concurrency` group**, because
+> `evaluate` is idempotent — it reads the PR's title, labels, mergeable state, head
+> SHA and the base's checks live from the API at run time rather than from the event
+> payload, so concurrent runs for one PR compute the _same_ verdict and post the same
+> check-run. GitHub gates on the latest run posted under the name, so ordering does
+> not change the outcome. **Only the single check-run named `merge-safety` gates the
+> merge** (see [the check-run contract](check-run-contract.md)).
+>
+> **If you adopted merge-safety before v0.4.0 you may remember red ✗ "cancelled"
+> entries here** — often under the misleading name
+> `merge-safety / Invalidate open PRs (base moved)`. Those came from a per-PR
+> `concurrency` group: GitHub allows one pending run per group and cancels the runs a
+> newer event supersedes. Because `cancelled` is also what a timed-out run reports,
+> they were indistinguishable from real failures to automation reading conclusions.
+> The group was removed in
+> [#48](https://github.com/rmartz/merge-safety/issues/48); bump your pin to stop them.
