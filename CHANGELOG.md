@@ -1,6 +1,7 @@
 # Changelog
 
-> **Frozen.** Releases are now tag-driven and their notes are auto-generated on the
+> **Frozen.** Releases are now cut automatically by `semantic-release` on push to
+> `main`, and their notes are generated on the
 > [GitHub Releases](https://github.com/rmartz/merge-safety/releases) page (see
 > [`release.yml`](.github/workflows/release.yml)). This file is retained as the
 > historical record through `0.1.0` and is no longer updated.

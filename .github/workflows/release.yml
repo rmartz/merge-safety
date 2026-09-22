@@ -1,69 +1,51 @@
 name: Release
 
-# Tag-driven publish. Cutting a release is a deliberate act — bump the version and
-# push the tag:
+# Automatic releases, tag/npm-as-source-of-truth (Option B, modeled on rmartz/envctl
+# and rmartz/repo-hygiene). semantic-release runs on every push to main: it analyzes
+# the conventional-commit subjects since the last vX.Y.Z tag, computes the next
+# version, publishes @rmartz/merge-safety to GitHub Packages, creates the git tag +
+# GitHub Release, and comments on released PRs/issues.
 #
-#   pnpm version <patch|minor|major>   # bumps package.json, commits, tags vX.Y.Z
-#   git push --follow-tags
+# There is deliberately NO @semantic-release/git plugin: package.json is never bumped
+# back to main (it stays a placeholder — see its "version" field), so the released
+# version lives ONLY in the git tag. The reusable workflow (merge-safety.yml) resolves
+# the version to install from the release tag at its own pinned commit, not from
+# package.json. Only the built-in GITHUB_TOKEN is used — no PAT, no commit-back to a
+# protected branch. See docs/consuming.md and AGENTS.md.
 #
-# Pushing a vX.Y.Z tag triggers this workflow, which builds and publishes
-# @rmartz/merge-safety to GitHub Packages (public) and creates a GitHub Release
-# with auto-generated notes. There is NO release-please: nothing parses commit or
-# PR-body text, nothing writes a version into a workflow file, and the built-in
-# GITHUB_TOKEN is the only credential (no RELEASE_PLEASE_PAT).
-#
-# The reusable workflow (.github/workflows/merge-safety.yml) resolves the version
-# to install from its own pinned commit at runtime (job.workflow_sha → package.json),
-# so the version lives ONLY in package.json — never duplicated into a workflow file.
-# A failed run re-runs from the Actions UI against the same tag. See docs/consuming.md.
+# Staying on 0.x: while pre-1.0, a breaking change is capped at a MINOR bump (see the
+# `{ "breaking": true, "release": "minor" }` rule in .releaserc.json) so an accidental
+# `!` cannot auto-jump to 1.0.0. Cutting 1.0.0 is a deliberate manual act at go-live,
+# after which that cap rule is removed and breaking → major resumes.
 
 on:
   push:
-    tags: ['v*.*.*']
+    branches: [main]
+
+# Serialize releases so two pushes can't publish concurrently.
+concurrency: release
 
 permissions:
-  contents: write # create the GitHub Release
+  contents: write # create tags and GitHub releases
   packages: write # publish to GitHub Packages
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+  issues: write # semantic-release comments on released issues
+  pull-requests: write # semantic-release comments on released PRs
 
 jobs:
-  publish:
+  release:
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: pnpm
-          registry-url: https://npm.pkg.github.com
-          scope: '@rmartz'
-      - run: pnpm install --frozen-lockfile
-      # The pushed tag must match package.json's version: the reusable workflow reads
-      # that version back from this commit, so a mismatch would install the wrong
-      # package. Fail loudly rather than publish an inconsistent release.
-      - name: Verify tag matches package.json version
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          pkg="$(node -p "require('./package.json').version")"
-          tag="${REF_NAME#v}"
-          if [ "$pkg" != "$tag" ]; then
-            echo "Tag ${REF_NAME} (version $tag) does not match package.json version $pkg." >&2
-            echo "Cut releases with 'pnpm version <bump>' so the tag and package.json stay in lockstep." >&2
-            exit 1
-          fi
+          fetch-depth: 0 # semantic-release needs full history + tags
+          persist-credentials: false # authenticates via GITHUB_TOKEN below
+      - uses: ./.github/actions/setup
       - run: pnpm run build
-      - name: Publish to GitHub Packages
-        run: pnpm publish --no-git-checks --access public
+      - run: pnpm exec semantic-release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create GitHub Release with generated notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # @semantic-release/npm authenticates to the publishConfig registry
+          # (GitHub Packages) with this token; GITHUB_TOKEN has packages:write.
+          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}

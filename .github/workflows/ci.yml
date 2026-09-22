@@ -114,3 +114,33 @@ jobs:
                 [...refs].join("\n  "),
             );
           '
+
+  release-dry-run:
+    name: Release dry-run
+    # Validate the semantic-release config — above all that the changelog toolchain
+    # (preset + conventional-changelog-writer) still renders — on PRs, so a broken
+    # release config is caught here rather than on the post-merge Release run (which
+    # only fires on push to main; see release.yml).
+    #
+    # A plain `semantic-release --dry-run` early-exits on a non-main branch before
+    # rendering notes, which would pass a broken config. We override --branches with
+    # the PR head ref (which exists on the remote, so semantic-release accepts it as a
+    # release branch) to force the analyzeCommits + generateNotes path; --dry-run
+    # guarantees nothing is published, tagged, or commented. Restricted to same-repo
+    # PRs because a fork's head branch does not exist on this remote.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # semantic-release needs full history + tags
+          persist-credentials: false # authenticates via GITHUB_TOKEN below
+      - uses: ./.github/actions/setup
+      - run: pnpm exec semantic-release --dry-run --branches "$HEAD_REF"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}

@@ -57,11 +57,13 @@ file as off-limits just because bootstrap once seeded it.
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
-  build / package ([ci.yml](.github/workflows/ci.yml)), the PR-title lint, the
-  tag-driven release ([release.yml](.github/workflows/release.yml)), and the hardened
-  `dependabot.yml` are all in place. `ai-ensure-labels` / `ai-verify-squash-setting`
-  remain useful one-shot helpers, but this repo owns its `.github/` config going
-  forward.
+  build / package / release-dry-run ([ci.yml](.github/workflows/ci.yml)), the PR-title
+  lint, the post-merge commit-convention tripwire
+  ([commit-convention.yml](.github/workflows/commit-convention.yml)), the automatic
+  semantic-release release ([release.yml](.github/workflows/release.yml)), and the
+  hardened `dependabot.yml` are all in place. `ai-ensure-labels` /
+  `ai-verify-squash-setting` remain useful one-shot helpers, but this repo owns its
+  `.github/` config going forward.
 
 ## Common commands
 
@@ -106,15 +108,33 @@ Most are enforced by eslint; the intent:
   …). The repo squash-merges using the **PR title**, so it is the only subject that
   reaches `main`; a conventional title keeps `git log` and the release notes'
   auto-grouping readable. (Titles are lint-checked; nothing parses PR _body_ text.)
-- **Releases are tag-driven**, not automated by a bot. Cut one with
-  `pnpm version <patch|minor|major>` (bumps `package.json`, commits, tags `vX.Y.Z`)
-  then `git push --follow-tags`; pushing the tag runs
-  [release.yml](.github/workflows/release.yml), which publishes to GitHub Packages
-  (public) and creates a GitHub Release with generated notes using only the
-  built-in `GITHUB_TOKEN` (no release-please, no PAT). The version the reusable
-  workflow installs is resolved at runtime from its own pinned commit
-  (`job.workflow_sha` → `package.json`), so it lives only in `package.json` — never
-  duplicated into a workflow file.
+- **Releases are fully automatic** via `semantic-release` (Option B — tag/npm as the
+  source of truth, modeled on `rmartz/envctl` and `rmartz/repo-hygiene`). Every push
+  to `main` runs [release.yml](.github/workflows/release.yml): it analyzes the
+  conventional-commit subjects since the last `vX.Y.Z` tag, computes the next version,
+  publishes `@rmartz/merge-safety` to GitHub Packages (public), and creates the git
+  tag + GitHub Release — using only the built-in `GITHUB_TOKEN` (no release-please, no
+  PAT, no manual `pnpm version` step). **Do not bump `package.json` by hand** — its
+  `version` is a frozen `0.0.0` placeholder; there is deliberately **no
+  `@semantic-release/git`**, so nothing commits a version back to `main`. The version
+  the reusable workflow installs is resolved at runtime from the **release tag whose
+  commit is its own pinned SHA** (`job.workflow_sha` → `vX.Y.Z` tag) — never from
+  `package.json`, never duplicated into a workflow file. Config lives in
+  [`.releaserc.json`](.releaserc.json).
+- **Version mapping (v0):** `feat:` → minor; `fix:` / `perf:` → patch; `chore(deps):`
+  (Dependabot) → patch. While pre-1.0 a **breaking change (`!`) is capped at a minor
+  bump** (the `{ "breaking": true, "release": "minor" }` rule) so an accidental `!`
+  can't auto-jump to `1.0.0`. `docs:` / `chore:` (non-deps) / `style:` / `refactor:` /
+  `test:` / `ci:` / `build:` do not release. **Leaving v0 is a deliberate act:** at
+  go-live, cut `1.0.0` manually (e.g. push a `v1.0.0` tag) and remove that cap rule so
+  `!` → major resumes.
+- **Three release guards** back the automatic flow:
+  [pr-title-lint.yml](.github/workflows/pr-title-lint.yml) (pre-merge title format),
+  [commit-convention.yml](.github/workflows/commit-convention.yml) (post-merge
+  tripwire — a non-conventional subject reaching `main` makes semantic-release
+  silently skip), and the `release-dry-run` job in [ci.yml](.github/workflows/ci.yml)
+  (pre-merge — renders the notes so a broken release toolchain fails the PR, not the
+  post-merge run).
 
 ## Agent directive files
 

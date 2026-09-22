@@ -87,19 +87,30 @@ pnpm run test         # vitest
 
 ## Releases
 
-Tag-driven. Cut a release with `pnpm version <patch|minor|major>` (bumps
-`package.json`, commits, tags `vX.Y.Z`) then `git push --follow-tags`. Pushing the
-tag runs [`release.yml`](.github/workflows/release.yml), which builds and publishes
-the package to GitHub Packages (public) and creates a GitHub Release with generated
-notes — using only the built-in `GITHUB_TOKEN`, no release-please and no PAT. The
-version installed by the reusable workflow is resolved at runtime from its own
-pinned commit, so it lives only in `package.json`.
+Fully automatic via [`semantic-release`](https://semantic-release.gitbook.io) — no
+manual `pnpm version` step. Every push to `main` runs
+[`release.yml`](.github/workflows/release.yml): it analyzes the conventional-commit
+subjects since the last `vX.Y.Z` tag (the squash-merged **PR title** is that subject),
+computes the next version, builds and publishes the package to GitHub Packages
+(public), and creates the git tag + GitHub Release with generated notes — using only
+the built-in `GITHUB_TOKEN`, no release-please and no PAT. There is deliberately **no
+`@semantic-release/git`**: `package.json`'s `version` is a frozen `0.0.0` placeholder
+and is never committed back. The version installed by the reusable workflow is
+resolved at runtime from the **release tag at its own pinned commit**, so it lives
+only in the git tag. Config: [`.releaserc.json`](.releaserc.json).
 
-The `Package` job in [`ci.yml`](.github/workflows/ci.yml) guards this on every PR:
-it packs exactly what `pnpm publish` would upload (via `pnpm publish --dry-run`, no
-registry or tag involved) and fails if the tarball is malformed or missing an entry
-point that `exports`/`bin` promise — so a broken packaging manifest is caught before
-merge rather than on the real release run.
+**Version mapping (v0):** `feat:` → minor; `fix:`/`perf:` → patch; `chore(deps):`
+→ patch. Pre-1.0, a breaking change (`!`) is **capped at minor** so it can't
+auto-jump to `1.0.0`; leaving v0 (cutting `1.0.0`) is a deliberate manual act.
+
+Three guards back the automatic flow: [`pr-title-lint.yml`](.github/workflows/pr-title-lint.yml)
+(pre-merge title format), [`commit-convention.yml`](.github/workflows/commit-convention.yml)
+(post-merge tripwire for a non-conventional subject that would make semantic-release
+silently skip), and, in [`ci.yml`](.github/workflows/ci.yml), the `release-dry-run`
+job (renders the notes so a broken release toolchain fails the PR) and the `Package`
+job (packs exactly what `pnpm publish` would upload and fails if the tarball is
+malformed or missing an `exports`/`bin` entry point) — so both a broken release config
+and a broken packaging manifest are caught before merge, not on the real release run.
 
 ---
 
