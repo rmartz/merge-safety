@@ -6,9 +6,8 @@ import {
   isBreakingTitle,
   isCiTitle,
   isEvaluablePrState,
-  isGitHubActionsCheck,
   isFailingCiConclusion,
-  failingBaseCiCheckNames,
+  failingRequiredBaseChecks,
   hasFileOverlap,
   overlappingFiles,
   evaluateMergeSafety,
@@ -37,9 +36,9 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
   };
 }
 
-/** A base check-run; defaults to a passing GitHub Actions run. Override per test. */
+/** A base check-run; defaults to a passing run named `test`. Override per test. */
 function check(overrides: Partial<BaseCheckRun> = {}): BaseCheckRun {
-  return { name: 'test', conclusion: 'success', appSlug: 'github-actions', ...overrides };
+  return { name: 'test', conclusion: 'success', ...overrides };
 }
 
 describe('isBreakingCommitMessage', () => {
@@ -125,14 +124,6 @@ describe('hasFileOverlap', () => {
   });
 });
 
-describe('isGitHubActionsCheck', () => {
-  it('is true only for the github-actions app slug', () => {
-    expect(isGitHubActionsCheck(check({ appSlug: 'github-actions' }))).toBe(true);
-    expect(isGitHubActionsCheck(check({ appSlug: 'vercel' }))).toBe(false);
-    expect(isGitHubActionsCheck(check({ appSlug: null }))).toBe(false);
-  });
-});
-
 describe('isFailingCiConclusion', () => {
   it('treats failure / timed_out / startup_failure as failing (expansive)', () => {
     expect(isFailingCiConclusion('failure')).toBe(true);
@@ -149,30 +140,61 @@ describe('isFailingCiConclusion', () => {
   });
 });
 
-describe('failingBaseCiCheckNames', () => {
-  it('returns the names of failing GitHub Actions checks', () => {
+describe('failingRequiredBaseChecks', () => {
+  const required = ['typecheck', 'test', 'lint'];
+
+  it('returns the names of failing checks that are required contexts', () => {
     expect(
-      failingBaseCiCheckNames([
-        check({ name: 'typecheck', conclusion: 'failure' }),
-        check({ name: 'test', conclusion: 'success' }),
-        check({ name: 'lint', conclusion: 'timed_out' }),
-      ]),
+      failingRequiredBaseChecks(
+        [
+          check({ name: 'typecheck', conclusion: 'failure' }),
+          check({ name: 'test', conclusion: 'success' }),
+          check({ name: 'lint', conclusion: 'timed_out' }),
+        ],
+        required,
+      ),
     ).toEqual(['typecheck', 'lint']);
   });
 
-  it('ignores a failing DEPLOY (non-Actions producer) even when it is red', () => {
-    // The crux of the base-health rule: a red deploy under green Actions is likely
-    // external and must not wedge the queue, so it is never a failing-CI signal.
+  it('ignores a failing check that is NOT a required context (e.g. the Dependabot job)', () => {
+    // The crux of #40: a failing job the repo hasn't declared a merge gate — the
+    // native "Dependabot Updates" run, other bots, informational checks — must not
+    // wedge the queue, so it is never a failing-CI signal.
     expect(
-      failingBaseCiCheckNames([
-        check({ name: 'Vercel', conclusion: 'failure', appSlug: 'vercel' }),
-        check({ name: 'test', conclusion: 'success', appSlug: 'github-actions' }),
-      ]),
+      failingRequiredBaseChecks(
+        [
+          check({ name: 'Dependabot', conclusion: 'failure' }),
+          check({ name: 'test', conclusion: 'success' }),
+        ],
+        required,
+      ),
     ).toEqual([]);
   });
 
-  it('is empty when every Actions check is green', () => {
-    expect(failingBaseCiCheckNames([check({ conclusion: 'success' })])).toEqual([]);
+  it('counts a failing required check regardless of its producer (e.g. a required deploy)', () => {
+    // A required context is a declared merge gate whoever produces it — so a failing
+    // *required* deploy blocks, unlike an unrequired one.
+    expect(
+      failingRequiredBaseChecks([check({ name: 'Vercel', conclusion: 'failure' })], ['Vercel']),
+    ).toEqual(['Vercel']);
+  });
+
+  it('reports no failure when the required set is null (unreadable protection)', () => {
+    expect(
+      failingRequiredBaseChecks([check({ name: 'typecheck', conclusion: 'failure' })], null),
+    ).toEqual([]);
+  });
+
+  it('reports no failure when no status checks are required', () => {
+    expect(
+      failingRequiredBaseChecks([check({ name: 'typecheck', conclusion: 'failure' })], []),
+    ).toEqual([]);
+  });
+
+  it('is empty when every required check is green', () => {
+    expect(
+      failingRequiredBaseChecks([check({ name: 'test', conclusion: 'success' })], required),
+    ).toEqual([]);
   });
 });
 

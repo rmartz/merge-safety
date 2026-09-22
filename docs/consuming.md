@@ -101,7 +101,13 @@ Why each piece is there:
   the [reusable workflow](../.github/workflows/merge-safety.yml), so the caller
   stays thin.
 - **`check_suite: [completed]` re-holds PRs when the base's CI flips.** The
-  base-health axis blocks non-hotfix PRs while the base branch's CI is red. A push
+  base-health axis blocks non-hotfix PRs while the base branch's CI is red — where
+  "red" means one of the base branch's **required status checks** (the contexts its
+  ruleset declares) failed, not an arbitrary failing job like the native "Dependabot
+  Updates" run. `evaluate` reads that required-check set from the branch's rulesets
+  (`GET /repos/{repo}/rules/branches/{branch}`, covered by the `contents: read`
+  scope above); if it can't be read, base health simply reports no failure rather
+  than blocking. A push
   to the base re-evaluates open PRs immediately, but at that moment the base's CI
   is still _pending_ — so the reusable workflow also fans out (`invalidate`) when a
   base-branch `check_suite` **completes**, re-holding already-cleared PRs once the

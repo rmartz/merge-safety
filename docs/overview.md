@@ -31,10 +31,13 @@ gathers the safety **facts** for that one PR against its base:
 - **Conflicts** — does the PR merge cleanly, or is there a conflict?
 - **Base health** — is the **base branch's own CI** failing? A red base blocks
   every PR **except a `hotfix`-labelled one**, so the fix for broken main still
-  gets through while nothing else piles onto it. "Failing CI" is read expansively
-  — any failing GitHub Actions run on the base counts — but a failing _deploy_
-  does not: a red deploy under green Actions is likelier an external fault no code
-  change can fix, so it must not wedge the whole queue.
+  gets through while nothing else piles onto it. "Failing CI" is scoped to the base
+  branch's **required status checks** (the contexts its ruleset declares define a
+  mergeable base): a failing check that is one of them blocks, whoever produced it,
+  while an arbitrary failing job that _isn't_ a merge gate — the native "Dependabot
+  Updates" run, other bots, informational checks — never wedges the queue. If the
+  required-check set can't be read (no ruleset, or a transient error), base health
+  reports no failure rather than blocking everything.
 
 It then posts the `merge-safety` check-run with the verdict and **reconciles the
 labels** that surface the reason to humans and to the coordinator — the
