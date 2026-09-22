@@ -131,9 +131,10 @@ Most are enforced by eslint; the intent:
   **github-actions** bump as `chore(github-actions):` — both release-less, since
   neither reaches the shipped artifact. (There is deliberately **no** `chore(deps)` →
   release rule; the split prefix, not a releaserc special-case, is what makes prod
-  bumps release and dev bumps not.) **Leaving v0 is a deliberate act:** at
-  go-live, cut `1.0.0` manually (e.g. push a `v1.0.0` tag) and remove that cap rule so
-  `!` → major resumes.
+  bumps release and dev bumps not.) As a zero-runtime-dependency package, all
+  Dependabot bumps are dev-only in practice — no Dependabot PR cuts a release.
+  **Leaving v0 is a deliberate act:** at go-live, cut `1.0.0` manually (e.g. push a
+  `v1.0.0` tag) and remove that cap rule so `!` → major resumes.
 - **Three release guards** back the automatic flow:
   [pr-title-lint.yml](.github/workflows/pr-title-lint.yml) (pre-merge title format),
   [commit-convention.yml](.github/workflows/commit-convention.yml) (post-merge
