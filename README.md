@@ -99,11 +99,13 @@ and is never committed back. The version installed by the reusable workflow is
 resolved at runtime from the **release tag at its own pinned commit**, so it lives
 only in the git tag. Config: [`.releaserc.json`](.releaserc.json).
 
-**Version mapping (v0):** `feat:` → minor; `fix:`/`perf:` → patch. `chore:` (incl.
-`chore(deps):`), `docs:`, `refactor:`, `test:`, `ci:`, `build:`, `style:` do not
-release — this package is zero-runtime-dependency, so Dependabot bumps are dev-only.
-Pre-1.0, a breaking change (`!`) is **capped at minor** so it can't auto-jump to
-`1.0.0`; leaving v0 (cutting `1.0.0`) is a deliberate manual act.
+**Version mapping (v0):** `feat:` → minor; `fix:`/`perf:` → patch. Pre-1.0, a
+breaking change (`!`) is **capped at minor** so it can't auto-jump to `1.0.0`;
+leaving v0 (cutting `1.0.0`) is a deliberate manual act. Dependabot uses the
+split-prefix convention (rmartz/ai#82): a **production** bump arrives as
+`fix(deps):` → patch (it ships to users); **dev** (`chore(deps):`) and
+**github-actions** (`chore(github-actions):`) bumps are release-less — as a
+zero-runtime-dependency package, all Dependabot bumps are dev-only in practice.
 
 Three guards back the automatic flow: [`pr-title-lint.yml`](.github/workflows/pr-title-lint.yml)
 (pre-merge title format), [`commit-convention.yml`](.github/workflows/commit-convention.yml)

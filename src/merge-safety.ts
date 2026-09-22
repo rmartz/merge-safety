@@ -15,10 +15,15 @@
  *      coordinator rebases in-flight PRs past CI changes — see the `ci` prefix
  *      rebase rule), OR
  *   3. the PR is **itself** a breaking change, OR
- *   4. the PR's changed files **intersect** the files changed on the base since
+ *   4. the PR is **itself** a `ci`-typed change — a CI guard is only as good as
+ *      the base it last ran against, so a CI PR that was clean when it was opened
+ *      must be re-tested against the current base to catch a pattern the guard
+ *      protects against that has regressed on the base since (the symmetric
+ *      partner to clause 2's base-side detection), OR
+ *   5. the PR's changed files **intersect** the files changed on the base since
  *      merge-base.
  *
- * Clause 4 is a *narrowing* guard, not a widening one: it only ever forces more
+ * Clause 5 is a *narrowing* guard, not a widening one: it only ever forces more
  * PRs current. Git can merge two disjoint-looking diffs cleanly and still produce
  * invalid code (an earlier PR deletes a symbol this PR still references), so any
  * file-level overlap forces a rebase + re-CI to catch the semantic conflict a
@@ -80,6 +85,11 @@ export function isCiCommitMessage(message: string): boolean {
 /** True when a PR title carries the conventional-commit breaking `!` marker. */
 export function isBreakingTitle(title: string): boolean {
   return BREAKING_SUBJECT_RE.test(title.trim());
+}
+
+/** True when a PR title is a `ci`-typed conventional commit. */
+export function isCiTitle(title: string): boolean {
+  return CI_SUBJECT_RE.test(title.trim());
 }
 
 /**
@@ -186,6 +196,8 @@ export interface MergeSafetyFacts {
   baseCiSinceMergeBase: boolean;
   /** The PR is itself a breaking change (title `!` marker or `breaking change` label). */
   prIsBreaking: boolean;
+  /** The PR is itself a `ci`-typed change (title `ci:` / `ci(scope):`). */
+  prIsCi: boolean;
   /** The PR's changed files intersect the base's changed files since merge-base. */
   fileOverlap: boolean;
   /** Git reports the PR as conflicting (`mergeable === 'CONFLICTING'`). */
@@ -270,6 +282,13 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
   if (stale && facts.prIsBreaking) {
     reasons.push('This PR is a breaking change — it must be current with the base before merge.');
   }
+  if (stale && facts.prIsCi) {
+    reasons.push(
+      'This PR is a CI change — it must be current with the base before merge, so it is ' +
+        're-tested against the latest base and cannot green a guard against a pattern that ' +
+        'has since regressed.',
+    );
+  }
   if (stale && facts.baseCiSinceMergeBase) {
     reasons.push(
       withDetail(
@@ -293,6 +312,7 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     (facts.baseBreakingSinceMergeBase ||
       facts.baseCiSinceMergeBase ||
       facts.prIsBreaking ||
+      facts.prIsCi ||
       facts.fileOverlap);
 
   const conclusion: MergeSafetyConclusion =

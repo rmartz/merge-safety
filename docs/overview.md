@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: What merge-safety is
-description: The pre-auto-merge safety verdict for a PR — the base-currency, breaking-change, and conflict facts it gathers, and the check-run and labels it manages via evaluate and invalidate.
+description: The pre-auto-merge safety verdict for a PR — the base-currency, breaking-change, CI-typed-PR, and conflict facts it gathers, and the check-run and labels it manages via evaluate and invalidate.
 tags: [merge-safety, auto-merge, ci, overview]
 ---
 
@@ -24,6 +24,10 @@ gathers the safety **facts** for that one PR against its base:
 - **Base currency** — is the PR's branch behind its base in a way that matters?
 - **Breaking change** — did something merge into the base that this PR must be
   re-tested against (a breaking-change signal or a real file overlap)?
+- **CI-typed PR** — is the PR's own title a `ci:`/`ci(scope):` conventional
+  commit? A CI change is only as good as the base it last ran against, so a
+  stale CI PR is forced current before merge, symmetric to the `prIsBreaking`
+  clause.
 - **Conflicts** — does the PR merge cleanly, or is there a conflict?
 - **Base health** — is the **base branch's own CI** failing? A red base blocks
   every PR **except a `hotfix`-labelled one**, so the fix for broken main still

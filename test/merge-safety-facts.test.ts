@@ -106,6 +106,20 @@ describe('gatherMergeSafetyFacts', () => {
     expect(facts.hasConflict).toBe(true);
   });
 
+  it('flags prIsCi from a ci-typed PR title (and not from a plain feat title)', async () => {
+    const ci = await gatherMergeSafetyFacts(
+      { ...meta, title: 'ci(tests): shard the suite' },
+      { git: cleanStaleGit(), baseChecks: fakeChecks() },
+    );
+    expect(ci.prIsCi).toBe(true);
+
+    const feat = await gatherMergeSafetyFacts(meta, {
+      git: cleanStaleGit(),
+      baseChecks: fakeChecks(),
+    });
+    expect(feat.prIsCi).toBe(false);
+  });
+
   it('flags base CI failing from a failing base Actions check, and probes the base tip', async () => {
     let probedSha: string | undefined;
     const baseChecks: BaseChecksProbe = async (sha) => {
