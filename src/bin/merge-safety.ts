@@ -113,7 +113,7 @@ export function makeBaseChecksProbe(repo: string, cwd?: string): BaseChecksProbe
           '--paginate',
           `repos/${repo}/commits/${baseSha}/check-runs?filter=latest`,
           '--jq',
-          '.check_runs[] | {name: .name, conclusion: .conclusion}',
+          '.check_runs[] | {name: .name, conclusion: .conclusion, appSlug: .app.slug}',
         ],
       },
       null,
@@ -126,7 +126,7 @@ export function makeBaseChecksProbe(repo: string, cwd?: string): BaseChecksProbe
       if (!trimmed) continue;
       try {
         const c = JSON.parse(trimmed) as BaseCheckRun;
-        checks.push({ name: c.name, conclusion: c.conclusion });
+        checks.push({ name: c.name, conclusion: c.conclusion, appSlug: c.appSlug });
       } catch {
         // Skip a malformed line rather than fail the whole probe.
       }

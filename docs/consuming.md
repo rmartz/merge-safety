@@ -115,8 +115,9 @@ Why each piece is there:
   ruleset declares) failed, not an arbitrary failing job like the native "Dependabot
   Updates" run. `evaluate` reads that required-check set from the branch's rulesets
   (`GET /repos/{repo}/rules/branches/{branch}`, covered by the `contents: read`
-  scope above); if it can't be read, base health simply reports no failure rather
-  than blocking. A push
+  scope above); if it can't be read (no ruleset / transient error), base health
+  falls back to a coarser heuristic — a failing GitHub Actions run blocks, minus the
+  Dependabot job and any non-Actions deploy — so a broken base is still caught. A push
   to the base re-evaluates open PRs immediately, but at that moment the base's CI
   is still _pending_ — so the reusable workflow also fans out (`invalidate`) when a
   base-branch `check_suite` **completes**, re-holding already-cleared PRs once the

@@ -40,7 +40,10 @@ gathers the safety **facts** for that one PR against its base:
   while an arbitrary failing job that _isn't_ a merge gate — the native "Dependabot
   Updates" run, other bots, informational checks — never wedges the queue. If the
   required-check set can't be read (no ruleset, or a transient error), base health
-  reports no failure rather than blocking everything.
+  falls back to a coarser heuristic: a failing **GitHub Actions** run blocks, except
+  a known non-build platform job (the Dependabot job) or a non-Actions producer (a
+  deploy) — so a genuinely broken base is still caught in a repo with no queryable
+  ruleset, without reintroducing the #40 false positive.
 
 It then posts the `merge-safety` check-run with the verdict and **reconciles the
 labels** that surface the reason to humans and to the coordinator — the
