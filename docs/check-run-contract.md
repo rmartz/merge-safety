@@ -42,3 +42,17 @@ requires, quietly disabling the safety gate everywhere.
 So: the repository name is a free choice, but the **check-run name stays
 `merge-safety`**. Treat `MERGE_SAFETY_CHECK_NAME` as frozen; changing it is a
 deliberate cross-repo project, never a refactor.
+
+## Only the named check-run gates — cancelled sibling entries do not
+
+Because the gate matches by the single name `merge-safety`, **nothing else on the
+checks list gates the merge** — including the cancelled runs that a burst of
+`pull_request_target` events leaves behind. A single PR action can fire several PR
+events at once (a Dependabot open emits `opened` + `labeled` + `edited` within
+~1s); they share the PR's serialized `concurrency` group so only the newest run
+proceeds and the superseded ones are cancelled, rendering red ✗ (historically as
+`merge-safety / Invalidate open PRs (base moved)`). That is the cost of a correct
+latest-wins gate, not a failure: it is not the named `merge-safety` context and is
+not required. A green `merge-safety` check-run is the verdict, whatever cancelled
+siblings sit beside it — see
+[Setting up merge-safety in a consuming repo](consuming.md#3-require-the-check).
