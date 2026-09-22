@@ -121,11 +121,17 @@ Most are enforced by eslint; the intent:
   commit is its own pinned SHA** (`job.workflow_sha` → `vX.Y.Z` tag) — never from
   `package.json`, never duplicated into a workflow file. Config lives in
   [`.releaserc.json`](.releaserc.json).
-- **Version mapping (v0):** `feat:` → minor; `fix:` / `perf:` → patch; `chore(deps):`
-  (Dependabot) → patch. While pre-1.0 a **breaking change (`!`) is capped at a minor
-  bump** (the `{ "breaking": true, "release": "minor" }` rule) so an accidental `!`
-  can't auto-jump to `1.0.0`. `docs:` / `chore:` (non-deps) / `style:` / `refactor:` /
-  `test:` / `ci:` / `build:` do not release. **Leaving v0 is a deliberate act:** at
+- **Version mapping (v0):** `feat:` → minor; `fix:` / `perf:` → patch. While pre-1.0
+  a **breaking change (`!`) is capped at a minor bump** (the
+  `{ "breaking": true, "release": "minor" }` rule) so an accidental `!` can't
+  auto-jump to `1.0.0`. `docs:` / `chore:` / `style:` / `refactor:` / `test:` /
+  `ci:` / `build:` do not release. **Dependabot follows the split-prefix convention
+  (rmartz/ai#82):** a **production** bump arrives as `fix(deps):` → patch (it ships
+  to users), while a **dev-dependency** bump arrives as `chore(deps):` and a
+  **github-actions** bump as `chore(github-actions):` — both release-less, since
+  neither reaches the shipped artifact. (There is deliberately **no** `chore(deps)` →
+  release rule; the split prefix, not a releaserc special-case, is what makes prod
+  bumps release and dev bumps not.) **Leaving v0 is a deliberate act:** at
   go-live, cut `1.0.0` manually (e.g. push a `v1.0.0` tag) and remove that cap rule so
   `!` → major resumes.
 - **Three release guards** back the automatic flow:
