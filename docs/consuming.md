@@ -142,7 +142,12 @@ Why each piece is there:
   caller-granted and workflow-declared, so the caller must grant the full
   `checks` / `pull-requests` / `actions: write` set.
 - **`workflow_dispatch` `pr` threading** — the `invalidate` fan-out re-dispatches
-  each PR via `workflow_dispatch`, and the `pr` input passes through `with:`.
+  each PR via `workflow_dispatch`, and the `pr` input passes through `with:`. The
+  re-dispatch targets the caller file named by the `caller-workflow` input, which
+  defaults to `merge-safety.yml`; a caller saved under any other filename must pass
+  `caller-workflow: <its filename>`. (This repo's own caller,
+  [`merge-safety-self.yml`](../.github/workflows/merge-safety-self.yml), does
+  exactly that, since `merge-safety.yml` here is the reusable workflow itself.)
 - **`secrets: inherit`** — a safe default; the built-in `GITHUB_TOKEN`
   (via `packages: read`) covers the public CLI install.
 
