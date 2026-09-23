@@ -205,7 +205,7 @@ permission above is all the install needs, no per-repo PAT.
 > not change the outcome. **Only the single check-run named `merge-safety` gates the
 > merge** (see [the check-run contract](check-run-contract.md)).
 >
-> **If you adopted merge-safety before v0.4.0 you may remember red ✗ "cancelled"
+> **If you adopted merge-safety before v0.3.1 you may remember red ✗ "cancelled"
 > entries here** — often under the misleading name
 > `merge-safety / Invalidate open PRs (base moved)`. Those came from a per-PR
 > `concurrency` group: GitHub allows one pending run per group and cancels the runs a
