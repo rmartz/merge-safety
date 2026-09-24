@@ -120,9 +120,11 @@ Most are enforced by eslint; the intent:
   source of truth, modeled on `rmartz/envctl` and `rmartz/repo-hygiene`). Every push
   to `main` runs [release.yml](.github/workflows/release.yml): it analyzes the
   conventional-commit subjects since the last `vX.Y.Z` tag, computes the next version,
-  publishes `@rmartz/merge-safety` to GitHub Packages (public), and creates the git
-  tag + GitHub Release — using only the built-in `GITHUB_TOKEN` (no release-please, no
-  PAT, no manual `pnpm version` step). **Do not bump `package.json` by hand** — its
+  publishes `@rmartz/merge-safety` to npmjs (public), and creates the git tag +
+  GitHub Release — using only the built-in `GITHUB_TOKEN` (no release-please, no PAT,
+  no manual `pnpm version` step). npm auth is OIDC trusted publishing tied to the
+  `release.yml` filename (no `NPM_TOKEN`); renaming that workflow breaks publishing
+  until the trusted publisher on npmjs is updated. **Do not bump `package.json` by hand** — its
   `version` is a frozen `0.0.0` placeholder; there is deliberately **no
   `@semantic-release/git`**, so nothing commits a version back to `main`. The version
   the reusable workflow installs is resolved at runtime from the **release tag whose

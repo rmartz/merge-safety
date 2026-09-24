@@ -58,9 +58,11 @@ jobs:
 Then require the `merge-safety` status check on the default branch. Both the
 caller and the Dependabot entry are seeded once by
 [`@rmartz/bootstrap`](https://github.com/rmartz/ai-tools)
-(`ai-ensure-project-config`); after that Dependabot maintains the pin. The public
-`@rmartz/merge-safety` package on GitHub Packages is readable with the built-in
-`GITHUB_TOKEN`, so no consumer PAT is required.
+(`ai-ensure-project-config`); after that Dependabot maintains the pin. The
+`@rmartz/merge-safety` CLI is public on npmjs, so installing it needs no token.
+(Pins at v0.6.0 or earlier install from GitHub Packages instead, which is what the
+`packages: read` permission above is for; it can be dropped once your pin is past
+v0.6.0.)
 
 > For the full walkthrough — the caller's permissions, why it isn't trigger-free,
 > and how to verify the setup — see the
@@ -91,9 +93,10 @@ Fully automatic via [`semantic-release`](https://semantic-release.gitbook.io) �
 manual `pnpm version` step. Every push to `main` runs
 [`release.yml`](.github/workflows/release.yml): it analyzes the conventional-commit
 subjects since the last `vX.Y.Z` tag (the squash-merged **PR title** is that subject),
-computes the next version, builds and publishes the package to GitHub Packages
-(public), and creates the git tag + GitHub Release with generated notes — using only
-the built-in `GITHUB_TOKEN`, no release-please and no PAT. There is deliberately **no
+computes the next version, builds and publishes the package to npmjs (public, via
+OIDC trusted publishing with provenance — no npm token), and creates the git tag +
+GitHub Release with generated notes — using only the built-in `GITHUB_TOKEN`, no
+release-please and no PAT. There is deliberately **no
 `@semantic-release/git`**: `package.json`'s `version` is a frozen `0.0.0` placeholder
 and is never committed back. The version installed by the reusable workflow is
 resolved at runtime from the **release tag at its own pinned commit**, so it lives
