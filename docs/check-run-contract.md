@@ -43,16 +43,20 @@ So: the repository name is a free choice, but the **check-run name stays
 `merge-safety`**. Treat `MERGE_SAFETY_CHECK_NAME` as frozen; changing it is a
 deliberate cross-repo project, never a refactor.
 
-## Only the named check-run gates — cancelled sibling entries do not
+## Only the named check-run gates — sibling entries do not
 
 Because the gate matches by the single name `merge-safety`, **nothing else on the
-checks list gates the merge** — including the cancelled runs that a burst of
-`pull_request_target` events leaves behind. A single PR action can fire several PR
-events at once (a Dependabot open emits `opened` + `labeled` + `edited` within
-~1s); they share the PR's serialized `concurrency` group so only the newest run
-proceeds and the superseded ones are cancelled, rendering red ✗ (historically as
-`merge-safety / Invalidate open PRs (base moved)`). That is the cost of a correct
-latest-wins gate, not a failure: it is not the named `merge-safety` context and is
-not required. A green `merge-safety` check-run is the verdict, whatever cancelled
-siblings sit beside it — see
+checks list gates the merge**. A single PR action can fire several PR events at once
+(a Dependabot open emits `opened` + `labeled` + `edited` within ~1s), so a burst can
+leave more than one `merge-safety` run on the list. Only the named `merge-safety`
+check-run is a required context, and GitHub gates on the latest run posted under that
+name; a green `merge-safety` check-run is the verdict, whatever sibling entries sit
+beside it — see
 [Setting up merge-safety in a consuming repo](consuming.md#3-require-the-check).
+
+Those siblings used to be **cancelled** runs, because the reusable workflow declared a
+per-PR `concurrency` group and GitHub cancels any pending run a newer event supersedes.
+That group was removed in
+[#48](https://github.com/rmartz/merge-safety/issues/48): a cancelled run renders red ✗
+and is the same conclusion a timed-out run produces, so it read as a failure to anything
+inspecting check conclusions. The burst's runs now overlap and each completes normally.
