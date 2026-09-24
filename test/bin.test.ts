@@ -72,11 +72,13 @@ const facts = (over: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts => ({
   ...over,
 });
 
+/** A check-runs create (POST) — the open-run lookup (a GET) is not a post. */
+const isCheckPost = (argv: string[]) =>
+  argv.includes('POST') && argv.some((a) => a.endsWith('/check-runs'));
+
 /** The stdin payload of the check-runs POST, or null if no check-run was posted. */
 function postedCheck(): Record<string, unknown> | null {
-  const call = ghCall.mock.calls.find(([primary]) =>
-    (primary.argv as string[]).some((a) => a.includes('/check-runs')),
-  );
+  const call = ghCall.mock.calls.find(([primary]) => isCheckPost(primary.argv as string[]));
   return call
     ? (JSON.parse((call[0] as { stdin: string }).stdin) as Record<string, unknown>)
     : null;
@@ -181,6 +183,24 @@ describe('runEvaluate', () => {
     expect(removeLabel).toHaveBeenCalledWith(REPO, 5, 'merge conflict', expect.anything());
   });
 
+  it('completes the invalidate step’s pending run in place rather than posting a sibling (#61)', async () => {
+    ghCall.mockImplementation(async (primary: { argv: string[] }) => {
+      if (primary.argv.includes('view')) return prView();
+      // The head carries the pending run invalidate left behind.
+      if (primary.argv.some((a) => a.includes('check_name='))) return '777\n';
+      return '{}';
+    });
+    gatherMergeSafetyFacts.mockResolvedValue(facts());
+    await runEvaluate(REPO, 5, evalArgs());
+    expect(postedCheck()).toBeNull();
+    const patch = ghCall.mock.calls.find(([p]) => (p.argv as string[]).includes('PATCH'));
+    expect(patch?.[0].argv).toContain(`repos/${REPO}/check-runs/777`);
+    expect(JSON.parse((patch![0] as { stdin: string }).stdin)).toMatchObject({
+      status: 'completed',
+      conclusion: 'success',
+    });
+  });
+
   it('applies the add-only `breaking change` label and never removes it (#53)', async () => {
     ghCall.mockImplementation(async (primary: { argv: string[] }) =>
       primary.argv.includes('view') ? prView() : '',
@@ -219,9 +239,7 @@ describe('runInvalidate', () => {
     });
     await runInvalidate(REPO, invalidateArgs({ exclude: 1, workflow: 'custom-caller.yml' }));
 
-    const checkPosts = ghCall.mock.calls.filter(([p]) =>
-      (p.argv as string[]).some((a) => a.includes('/check-runs')),
-    );
+    const checkPosts = ghCall.mock.calls.filter(([p]) => isCheckPost(p.argv as string[]));
     const dispatches = ghCall.mock.calls.filter(([p]) => (p.argv as string[]).includes('workflow'));
 
     // The excluded PR #1 (sha1) is never touched.

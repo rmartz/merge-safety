@@ -101,7 +101,9 @@ On a push to the base branch, `invalidate` fans out across **every other open
 PR**: it flips each one's `merge-safety` check back to pending and re-dispatches
 its `evaluate`. This is what makes a moved base hold native auto-merge until each
 PR has been re-checked against the new base, rather than letting a now-stale PR
-merge itself.
+merge itself. The dispatched `evaluate` completes that same pending run in place
+with its verdict, rather than posting a second one beside it (see
+[the check-run contract](check-run-contract.md#one-run-per-head-completed-in-place)).
 
 It also fans out when the **base branch's own CI concludes** (a `check_suite`
 completion on the default branch). A push-time re-evaluation sees the base's CI

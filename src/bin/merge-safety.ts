@@ -9,11 +9,8 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ghCall, resolveRepoTarget, addLabels, removeLabel } from '../lib/github.js';
-import {
-  MERGE_SAFETY_CHECK_NAME,
-  isMergeSafetyCommand,
-  type MergeSafetyCommand,
-} from '../index.js';
+import { postCheck } from '../lib/check-run.js';
+import { isMergeSafetyCommand, type MergeSafetyCommand } from '../index.js';
 import {
   evaluateMergeSafety,
   errorMergeSafetyDecision,
@@ -236,33 +233,6 @@ async function resolveDefaultBranch(
   return view?.defaultBranchRef?.name ?? null;
 }
 
-/** Post (create) a check-run on a head SHA. `conclusion` omitted → pending. */
-async function postCheck(
-  repo: string,
-  headSha: string,
-  output: { title: string; summary: string },
-  conclusion: 'success' | 'failure' | null,
-  cwd?: string,
-): Promise<void> {
-  const payload = {
-    // The fleet-contract check-run name (src/index.ts). Never a local literal —
-    // every consumer's required status check matches exactly this name.
-    name: MERGE_SAFETY_CHECK_NAME,
-    head_sha: headSha,
-    status: conclusion ? 'completed' : 'in_progress',
-    ...(conclusion ? { conclusion, completed_at: new Date().toISOString() } : {}),
-    output,
-  };
-  await ghCall(
-    {
-      argv: ['gh', 'api', '-X', 'POST', `repos/${repo}/check-runs`, '--input', '-'],
-      stdin: JSON.stringify(payload),
-    },
-    null,
-    { cwd },
-  );
-}
-
 interface PrView {
   number: number;
   headRefOid: string;
@@ -407,6 +377,7 @@ export async function runInvalidate(repo: string, args: Args): Promise<void> {
   for (const pr of prs) {
     if (pr.number === args.exclude) continue;
     // 1) Flip to pending immediately — a pending required check blocks auto-merge.
+    //    The evaluate below completes this same run in place (#61).
     await postCheck(
       repo,
       pr.headRefOid,
