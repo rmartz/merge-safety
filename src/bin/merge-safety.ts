@@ -25,9 +25,11 @@ import {
   gatherMergeSafetyFacts,
   makeGitRunner,
   type BaseChecksProbe,
+  type BasePrProbe,
   type PrMergeMeta,
   type RequiredChecksProbe,
 } from '../merge-safety-facts.js';
+import { DEFAULT_EXEMPT_BASE_LABELS } from '../stacked-base.js';
 
 /** The conventional consumer caller filename the invalidate fan-out re-dispatches. */
 const DEFAULT_CALLER_WORKFLOW = 'merge-safety.yml';
@@ -45,6 +47,14 @@ export interface Args {
    */
   workflow: string;
   cwd?: string;
+  /**
+   * The repository default branch, used by the stacked-PR barrier (#54). Absent →
+   * resolved from `gh repo view`; unresolvable → the barrier is disabled rather
+   * than holding every PR.
+   */
+  defaultBranch?: string;
+  /** Labels on a base PR that exempt its children from the barrier (#54). */
+  exemptBaseLabels: readonly string[];
   /** Decision-only: print the verdict as JSON and perform no side effects. */
   json: boolean;
 }
@@ -52,6 +62,7 @@ export interface Args {
 function usage(): never {
   console.error(
     'usage: ai-merge-safety evaluate --pr <n> [--json] [--repo <o/r>] [--base <ref>] [--cwd <path>]\n' +
+      '                                 [--default-branch <name>] [--exempt-base-labels <csv>]\n' +
       '       ai-merge-safety invalidate [--workflow <file>] [--exclude <n>] [--repo <o/r>] [--cwd <path>]',
   );
   process.exit(2);
@@ -64,6 +75,7 @@ function parse(argv: string[]): Args {
     mode,
     baseRef: 'origin/main',
     workflow: DEFAULT_CALLER_WORKFLOW,
+    exemptBaseLabels: DEFAULT_EXEMPT_BASE_LABELS,
     json: false,
   };
   for (let i = 1; i < argv.length; i++) {
@@ -74,6 +86,12 @@ function parse(argv: string[]): Args {
     else if (a === '--base') args.baseRef = argv[++i] ?? args.baseRef;
     else if (a === '--workflow') args.workflow = argv[++i] ?? args.workflow;
     else if (a === '--cwd') args.cwd = argv[++i];
+    else if (a === '--default-branch') args.defaultBranch = argv[++i];
+    else if (a === '--exempt-base-labels')
+      args.exemptBaseLabels = (argv[++i] ?? '')
+        .split(',')
+        .map((l) => l.trim())
+        .filter(Boolean);
     else if (a === '--json' || a === '--dry-run') args.json = true;
     else usage();
   }
@@ -169,6 +187,55 @@ export function makeRequiredChecksProbe(repo: string, cwd?: string): RequiredChe
   };
 }
 
+/**
+ * A real base-PR probe: the open PR whose **head** is `baseBranch`, i.e. this PR's
+ * stacked parent (#54). Soft-fails to `null` (not stacked) on any read error or
+ * malformed payload, so a transient `gh` failure never holds a PR that may not be
+ * stacked at all. `--limit 1` suffices: a branch heads at most one open PR.
+ */
+export function makeBasePrProbe(repo: string, cwd?: string): BasePrProbe {
+  return async (baseBranch) => {
+    const prs = await ghJson<{ number: number; labels: { name: string }[] }[]>(
+      [
+        'gh',
+        'pr',
+        'list',
+        '--repo',
+        repo,
+        '--state',
+        'open',
+        '--head',
+        baseBranch,
+        '--limit',
+        '1',
+        '--json',
+        'number,labels',
+      ],
+      cwd,
+    );
+    const pr = prs?.[0];
+    if (!pr) return null;
+    return { number: pr.number, labels: (pr.labels ?? []).map((l) => l.name) };
+  };
+}
+
+/**
+ * The repository default branch, for the stacked barrier. Returns `null` when it
+ * cannot be read, which disables the barrier rather than stranding every PR.
+ */
+async function resolveDefaultBranch(
+  repo: string,
+  override: string | undefined,
+  cwd?: string,
+): Promise<string | null> {
+  if (override) return override;
+  const view = await ghJson<{ defaultBranchRef: { name: string } | null }>(
+    ['gh', 'repo', 'view', repo, '--json', 'defaultBranchRef'],
+    cwd,
+  );
+  return view?.defaultBranchRef?.name ?? null;
+}
+
 /** Post (create) a check-run on a head SHA. `conclusion` omitted → pending. */
 async function postCheck(
   repo: string,
@@ -261,6 +328,9 @@ export async function runEvaluate(repo: string, pr: number, args: Args): Promise
       git: makeGitRunner(args.cwd),
       baseChecks: makeBaseChecksProbe(repo, args.cwd),
       requiredChecks: makeRequiredChecksProbe(repo, args.cwd),
+      basePr: makeBasePrProbe(repo, args.cwd),
+      defaultBranch: await resolveDefaultBranch(repo, args.defaultBranch, args.cwd),
+      exemptBaseLabels: args.exemptBaseLabels,
     });
     decision = evaluateMergeSafety(facts);
   } catch (err) {

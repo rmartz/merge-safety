@@ -359,3 +359,89 @@ describe('gatherMergeSafetyFacts — the diff-derived breaking signals (#53)', (
     ).rejects.toThrow('git diff failed');
   });
 });
+
+describe('gatherMergeSafetyFacts — the stacked-base barrier (#54)', () => {
+  /** A clean current-PR git fake on `baseRef`. */
+  function gitOn(baseRef: string): GitRunner {
+    return fakeGit({
+      [`merge-base HEAD1 ${baseRef}`]: 'TIP',
+      [`rev-parse ${baseRef}`]: 'TIP',
+      [`log -z --format=%H%n%B TIP..${baseRef}`]: '',
+      [`diff --name-only TIP ${baseRef}`]: '',
+      'diff --name-only TIP HEAD1': 'src/b.ts',
+      'diff --unified=0 TIP HEAD1': '',
+    });
+  }
+
+  const base = {
+    baseChecks: fakeChecks(),
+    requiredChecks: fakeRequired(),
+    defaultBranch: 'main',
+  };
+
+  it('records the parent PR when the base is another open PR head', async () => {
+    const facts = await gatherMergeSafetyFacts(meta, {
+      ...base,
+      baseRef: 'origin/issue-53-foo',
+      git: gitOn('origin/issue-53-foo'),
+      basePr: async () => ({ number: 42, labels: [] }),
+    });
+
+    expect(facts.baseBranch).toBe('issue-53-foo');
+    expect(facts.stackedOnPr).toBe(42);
+  });
+
+  it('skips the probe entirely for a PR based on the default branch', async () => {
+    let probed = 0;
+    const facts = await gatherMergeSafetyFacts(meta, {
+      ...base,
+      git: gitOn('origin/main'),
+      basePr: async () => {
+        probed += 1;
+        return { number: 42, labels: [] };
+      },
+    });
+
+    expect(probed).toBe(0);
+    expect(facts.baseBranch).toBe('main');
+    expect(facts.stackedOnPr).toBeNull();
+  });
+
+  it('applies the exempt-label policy from the caller', async () => {
+    const opts = {
+      ...base,
+      baseRef: 'origin/release-train',
+      git: gitOn('origin/release-train'),
+      basePr: async () => ({ number: 7, labels: ['release'] }),
+    };
+
+    const exempted = await gatherMergeSafetyFacts(meta, opts);
+    expect(exempted.stackedOnPr).toBeNull();
+
+    const barred = await gatherMergeSafetyFacts(meta, { ...opts, exemptBaseLabels: [] });
+    expect(barred.stackedOnPr).toBe(7);
+  });
+
+  it('leaves the barrier inert when the default branch is unresolved', async () => {
+    const facts = await gatherMergeSafetyFacts(meta, {
+      ...base,
+      defaultBranch: null,
+      baseRef: 'origin/issue-53-foo',
+      git: gitOn('origin/issue-53-foo'),
+      basePr: async () => ({ number: 42, labels: [] }),
+    });
+
+    expect(facts.stackedOnPr).toBeNull();
+  });
+
+  it('treats an unreadable base-PR lookup as not stacked', async () => {
+    const facts = await gatherMergeSafetyFacts(meta, {
+      ...base,
+      baseRef: 'origin/issue-53-foo',
+      git: gitOn('origin/issue-53-foo'),
+      basePr: async () => null,
+    });
+
+    expect(facts.stackedOnPr).toBeNull();
+  });
+});
