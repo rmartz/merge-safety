@@ -65,6 +65,8 @@ const facts = (over: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts => ({
   baseCiCommits: [],
   overlappingFiles: [],
   failingBaseChecks: [],
+  prBreakingDiffSignals: [],
+  prMayCarryBreakingMarker: false,
   ...over,
 });
 
@@ -175,6 +177,25 @@ describe('runEvaluate', () => {
     expect(addLabels).not.toHaveBeenCalled();
     expect(removeLabel).toHaveBeenCalledWith(REPO, 5, 'update required', expect.anything());
     expect(removeLabel).toHaveBeenCalledWith(REPO, 5, 'merge conflict', expect.anything());
+  });
+
+  it('applies the add-only `breaking change` label and never removes it (#53)', async () => {
+    ghCall.mockImplementation(async (primary: { argv: string[] }) =>
+      primary.argv.includes('view') ? prView() : '',
+    );
+    gatherMergeSafetyFacts.mockResolvedValue(
+      facts({
+        prIsBreaking: true,
+        prMayCarryBreakingMarker: true,
+        prBreakingDiffSignals: [
+          { kind: 'major-version-bump', detail: ['left-pad 2.1.0 \u2192 3.0.0'] },
+        ],
+      }),
+    );
+    await runEvaluate(REPO, 5, evalArgs());
+    // The PR is current, so no reconciled label applies — only the add-only one.
+    expect(addLabels).toHaveBeenCalledWith(REPO, 5, ['breaking change'], expect.anything());
+    expect(removeLabel).not.toHaveBeenCalledWith(REPO, 5, 'breaking change', expect.anything());
   });
 });
 

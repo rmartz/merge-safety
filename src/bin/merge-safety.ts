@@ -295,7 +295,16 @@ export async function runEvaluate(repo: string, pr: number, args: Args): Promise
     decision.conclusion,
     args.cwd,
   );
-  await reconcileLabels(repo, pr, decision.labels.add, decision.labels.remove, args.cwd);
+  // `addOnly` (currently just `breaking change`) joins the add list but never the
+  // remove list — the check may assert a breaking change the diff proves, but must
+  // never retract one a human asserted (#53).
+  await reconcileLabels(
+    repo,
+    pr,
+    [...decision.labels.add, ...decision.labels.addOnly],
+    decision.labels.remove,
+    args.cwd,
+  );
   console.log(`#${pr}: ${decision.conclusion} — ${decision.summary}`);
 }
 
