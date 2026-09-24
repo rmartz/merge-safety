@@ -43,6 +43,33 @@ So: the repository name is a free choice, but the **check-run name stays
 `merge-safety`**. Treat `MERGE_SAFETY_CHECK_NAME` as frozen; changing it is a
 deliberate cross-repo project, never a refactor.
 
+## One run per head, completed in place
+
+Before posting, merge-safety looks for any `merge-safety` check-run on the PR's
+head SHA that is **not yet completed**. If it finds one, it updates that run in
+place (`PATCH`) instead of creating a new one. It creates a run (`POST`) only when
+there is nothing open to update, or when the lookup itself fails.
+
+This matters because of `invalidate`. When the base moves, `invalidate` marks each
+open PR pending by posting an `in_progress` run, then dispatches that PR's
+`evaluate`. Before
+[#61](https://github.com/rmartz/merge-safety/issues/61), `evaluate` posted its
+verdict as a _second_ run, and nothing ever completed the pending one. The gate
+still worked, since GitHub resolves a required check from the newest run, but each
+base move left one run per open PR stuck `in_progress` forever. Now the verdict
+lands on the pending run itself, so a head carries at most one open `merge-safety`
+run at a time.
+
+A few details:
+
+- The lookup matches the exact name `merge-safety`, so the reusable workflow's own
+  job entries (`merge-safety / Evaluate one PR`) are never touched.
+- It checks every run on the head, not just the latest, so orphans that earlier
+  versions left behind are completed the next time the PR is evaluated.
+- A pending run that never gets a verdict (for example, the dispatch failed) stays
+  `in_progress` and keeps blocking the merge, which is the fail-safe outcome. The
+  next evaluation of that head, from any PR event, completes it.
+
 ## Only the named check-run gates — sibling entries do not
 
 Because the gate matches by the single name `merge-safety`, **nothing else on the
