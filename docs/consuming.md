@@ -110,6 +110,21 @@ jobs:
 > [ai-tools#272](https://github.com/rmartz/ai-tools/issues/272); repos already seeded
 > with `pull_request` should switch their caller now.
 
+> **Migrating an existing `pull_request` caller? The switch PR wedges itself — clear
+> it with one `workflow_dispatch`.** On a repo where `merge-safety` is already a
+> **required** status check, the very PR that changes this caller from
+> `pull_request` to `pull_request_target` cannot get its _own_ `merge-safety` check
+> to post: GitHub builds a `pull_request` run from the **head** workflow file, which
+> no longer subscribes to `pull_request`, while `pull_request_target` reads the
+> **base** file, which does not subscribe to it yet — so neither event fires. The
+> required check never appears and the PR sits `BLOCKED` on it forever. Break the
+> deadlock by dispatching the caller once for that PR (the caller already carries the
+> `workflow_dispatch` `pr` input): `gh workflow run merge-safety.yml --repo <owner>/<repo> --ref main -f pr=<PR>`.
+> `evaluate` posts the `merge-safety` check-run on the PR's head SHA, the required
+> check turns green, and the PR merges normally. This is a one-time nudge per
+> migration PR; once merged, `pull_request_target` fires on its own for every
+> subsequent PR.
+
 Why each piece is there:
 
 - **The caller carries the triggers.** A reusable workflow can't declare its own
