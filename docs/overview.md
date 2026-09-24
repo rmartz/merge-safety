@@ -95,18 +95,6 @@ spurious semantic-release **major**. (Detection lives here; the title stamping
 stays in the coordinator's merge transaction, which is the only place that can
 rewrite a subject and holds the release-please exemption.)
 
-One label is handled differently. **`breaking change` is add-only**: the check
-applies it when the diff proves a dependency **major** bump _and_ the PR's title
-type is functional, so the label will survive to become a `!` on the squashed
-subject — and it **never removes it**, so a human's or an agent's explicit
-judgment is never silently reverted. It is deliberately _not_ applied for the
-other two diff signals: a CI-sensitive bump is answered by the `ci` retitle
-above, and a changed test expectation is a staleness signal rather than a public
-API break. Labelling either would stamp `!` on a functional-typed PR and fire a
-spurious semantic-release **major**. (Detection lives here; the title stamping
-stays in the coordinator's merge transaction, which is the only place that can
-rewrite a subject and holds the release-please exemption.)
-
 ## `invalidate` — the base moved (or its CI flipped)
 
 On a push to the base branch, `invalidate` fans out across **every other open
