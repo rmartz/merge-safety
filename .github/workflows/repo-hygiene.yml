@@ -1,26 +1,39 @@
 name: Repo Hygiene
 
-# This repo consumes @rmartz/repo-hygiene through the exact reusable-workflow
-# caller every consuming repo uses. It pins repo-hygiene's published reusable
-# workflow by SHA (Dependabot bumps it via the github-actions ecosystem) and runs
-# our chosen check set against our own tree through the published
-# @rmartz/repo-hygiene package.
+# This repo consumes @rmartz/repo-hygiene through the exact composite-Action
+# caller every consuming repo uses. It replaces the package's reusable workflow,
+# which is frozen at CLI 3.0.0 pending this migration (rmartz/repo-hygiene#45) —
+# so bumping that pin could no longer deliver new check logic, and the pin we
+# carried named a tag (`repo-hygiene-v1.0.1`) that Dependabot could not resolve
+# from a full-semver comment, stranding us on CLI 1.0.1.
+#
+# Unlike the reusable workflow, the consumer owns this job: it checks out the
+# workspace first (the Action scans it and checks out nothing itself), then runs
+# the Action as a step. The checks are tree-based, so no `fetch-depth: 0` is
+# needed. The `@<sha>` pin is kept current by Dependabot's github-actions
+# ecosystem, so new check logic arrives with no edit here.
 #
 # We name the checks explicitly (rather than take the default-on set) so OKF docs
 # conformance, docs-link integrity, AGENTS/CLAUDE pairing, and file-size caps are
-# all gated here, configured via .repo-hygiene.yml.
+# all gated here, alongside the opt-in package-pins; configured in
+# .repo-hygiene.yml.
 
 on:
   pull_request:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: read # read the public @rmartz/repo-hygiene package from GitHub Packages
+
 jobs:
   hygiene:
-    permissions:
-      contents: read
-      packages: read
-    uses: rmartz/repo-hygiene/.github/workflows/hygiene.yml@f1dcbeb51e68dec2f2064aca4620bd052d455a8f # v1.0.1
-    with:
-      checks: conflict-markers action-pins package-pins docs-links md-pairing okf okf-index file-caps
-      config: .repo-hygiene.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: rmartz/repo-hygiene-action@12245f5aae730c8ae0dfa5851c0320335ad0c96c # v2.0.0
+        with:
+          checks: conflict-markers action-pins package-pins docs-links md-pairing okf okf-index file-caps
+          config: .repo-hygiene.yml
