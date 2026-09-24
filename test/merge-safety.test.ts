@@ -283,32 +283,32 @@ describe('evaluateMergeSafety', () => {
     expect(d.labels.remove).toEqual([...MERGE_SAFETY_LABELS]);
   });
 
-  it('fails a stale PR when a breaking change landed on the base', () => {
+  it('holds (pending) a stale PR when a breaking change landed on the base', () => {
     const d = evaluateMergeSafety(
       makeFacts({ isCurrent: false, baseBreakingSinceMergeBase: true }),
     );
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     expect(d.labels.add).toEqual(['update required']);
     expect(d.reasons[0]).toMatch(/breaking change landed on the base/i);
   });
 
-  it('fails a stale PR that is itself breaking', () => {
+  it('holds (pending) a stale PR that is itself breaking', () => {
     const d = evaluateMergeSafety(makeFacts({ isCurrent: false, prIsBreaking: true }));
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     expect(d.reasons.some((r) => /this pr is a breaking change/i.test(r))).toBe(true);
   });
 
-  it('fails a stale PR when a ci change landed on the base', () => {
+  it('holds (pending) a stale PR when a ci change landed on the base', () => {
     const d = evaluateMergeSafety(makeFacts({ isCurrent: false, baseCiSinceMergeBase: true }));
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
   });
 
-  it('fails a stale PR that is itself a ci change', () => {
+  it('holds (pending) a stale PR that is itself a ci change', () => {
     const d = evaluateMergeSafety(makeFacts({ isCurrent: false, prIsCi: true }));
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     expect(d.reasons.some((r) => /this pr is a ci change/i.test(r))).toBe(true);
   });
@@ -319,9 +319,9 @@ describe('evaluateMergeSafety', () => {
     expect(d.needsUpdate).toBe(false);
   });
 
-  it('fails a stale PR only via file overlap (the narrowing clause)', () => {
+  it('holds (pending) a stale PR only via file overlap (the narrowing clause)', () => {
     const d = evaluateMergeSafety(makeFacts({ isCurrent: false, fileOverlap: true }));
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     expect(d.reasons[0]).toMatch(/files the base also changed since merge-base/i);
   });
@@ -425,7 +425,7 @@ describe('evaluateMergeSafety base health', () => {
     const d = evaluateMergeSafety(
       makeFacts({ baseCiFailing: true, prIsHotfix: true, isCurrent: false, fileOverlap: true }),
     );
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     expect(d.baseUnhealthy).toBe(false); // exempt on base health…
     expect(d.reasons[0]).toMatch(/files the base also changed since merge-base/i); // …but not staleness
@@ -449,7 +449,7 @@ describe('evaluateMergeSafety base health', () => {
         baseCiCommits: [{ sha: '1234567abcdef', subject: 'ci: add typecheck job' }],
       }),
     );
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     // The prIsCi reason is suppressed, but the base-side ci clause still fires.
     expect(d.reasons.some((r) => /this pr is a ci change/i.test(r))).toBe(false);
@@ -460,7 +460,7 @@ describe('evaluateMergeSafety base health', () => {
     const d = evaluateMergeSafety(
       makeFacts({ isCurrent: false, prIsBreaking: true, prIsHotfix: true }),
     );
-    expect(d.conclusion).toBe('failure');
+    expect(d.conclusion).toBe('pending');
     expect(d.needsUpdate).toBe(true);
     expect(d.reasons.some((r) => /this pr is a breaking change/i.test(r))).toBe(true);
   });

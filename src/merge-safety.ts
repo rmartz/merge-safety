@@ -201,10 +201,17 @@ export interface MergeSafetyFacts {
   stackedOnPr: number | null;
 }
 
-export type MergeSafetyConclusion = 'success' | 'failure';
+/**
+ * `pending` is posted as an incomplete (`in_progress`) check-run: it blocks the
+ * merge like `failure` but renders as a yellow dot, not a red ✗ (#58).
+ */
+export type MergeSafetyConclusion = 'success' | 'failure' | 'pending';
 
 export interface MergeSafetyDecision {
-  /** The check-run conclusion: `success` iff safe to merge as-is. */
+  /**
+   * The check-run conclusion: `success` iff safe to merge as-is; `pending` when the
+   * only problem is staleness, which a branch update clears; otherwise `failure`.
+   */
   conclusion: MergeSafetyConclusion;
   /** The PR must be brought current before merge (the staleness axis). */
   needsUpdate: boolean;
@@ -361,9 +368,15 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     );
   }
 
-  const conclusion: MergeSafetyConclusion =
-    needsUpdate || facts.hasConflict || baseUnhealthy || needsCiRetitle || stackedBarred
-      ? 'failure'
+  // Split the blocking verdict by what clears it (#58). Staleness alone is routine
+  // and a branch update fixes it, so it holds the PR as `pending` without reading as
+  // broken; everything else needs a person (or the base PR / base CI) to act, so it
+  // stays `failure`, including staleness combined with any of those.
+  const needsAction = facts.hasConflict || baseUnhealthy || needsCiRetitle || stackedBarred;
+  const conclusion: MergeSafetyConclusion = needsAction
+    ? 'failure'
+    : needsUpdate
+      ? 'pending'
       : 'success';
 
   // A reason may now carry nested detail bullets; the one-line summary takes only

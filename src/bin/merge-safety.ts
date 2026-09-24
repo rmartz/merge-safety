@@ -382,7 +382,7 @@ export async function runInvalidate(repo: string, args: Args): Promise<void> {
       repo,
       pr.headRefOid,
       { title: 'Re-evaluating', summary: 'Re-evaluating against the updated base…' },
-      null,
+      'pending',
       args.cwd,
     );
     // 2) Dispatch this PR's own evaluate run via the consumer's caller workflow; it

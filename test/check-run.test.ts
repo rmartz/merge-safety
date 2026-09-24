@@ -69,7 +69,7 @@ describe('postCheck', () => {
 
   it('refreshes an open run as still pending when the new state is pending', async () => {
     respond('7\n');
-    await postCheck(REPO, 'headsha', { title: 'Re-evaluating', summary: '…' }, null);
+    await postCheck(REPO, 'headsha', { title: 'Re-evaluating', summary: '…' }, 'pending');
     expect(posts()).toHaveLength(0);
     const body = JSON.parse(patches()[0]!.stdin!) as Record<string, unknown>;
     expect(body.status).toBe('in_progress');

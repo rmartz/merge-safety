@@ -164,7 +164,11 @@ describe('runEvaluate', () => {
     await runEvaluate(REPO, 5, evalArgs());
     const check = postedCheck();
     expect(check?.name).toBe(MERGE_SAFETY_CHECK_NAME);
-    expect(check?.conclusion).toBe('failure');
+    // Stale-only → pending (#58): an incomplete run, no conclusion.
+    expect(check?.status).toBe('in_progress');
+    expect(check).not.toHaveProperty('conclusion');
+    expect(check?.output).toMatchObject({ title: 'Update required' });
+    expect(process.exitCode).toBe(0);
     // needsUpdate → add 'update required', remove the disjoint 'merge conflict'.
     expect(addLabels).toHaveBeenCalledWith(REPO, 5, ['update required'], expect.anything());
     expect(removeLabel).toHaveBeenCalledWith(REPO, 5, 'merge conflict', expect.anything());

@@ -17,8 +17,12 @@ export interface CheckOutput {
   summary: string;
 }
 
-/** `null` → pending (`in_progress`, no conclusion); a pending run blocks auto-merge. */
-export type CheckConclusion = 'success' | 'failure' | null;
+/**
+ * `pending` posts an incomplete (`in_progress`) run with no conclusion — it blocks
+ * auto-merge like `failure` without rendering red. Both invalidate's "Re-evaluating"
+ * mark and the stale-only `Update required` verdict (#58) use it.
+ */
+export type CheckConclusion = 'success' | 'failure' | 'pending';
 
 /**
  * The ids of the head SHA's `merge-safety` runs that are not yet completed, or
@@ -65,11 +69,10 @@ export async function postCheck(
   conclusion: CheckConclusion,
   cwd?: string,
 ): Promise<void> {
-  const state = {
-    status: conclusion ? 'completed' : 'in_progress',
-    ...(conclusion ? { conclusion, completed_at: new Date().toISOString() } : {}),
-    output,
-  };
+  const state =
+    conclusion === 'pending'
+      ? { status: 'in_progress', output }
+      : { status: 'completed', conclusion, completed_at: new Date().toISOString(), output };
   let updated = false;
   for (const id of (await openCheckRunIds(repo, headSha, cwd)) ?? []) {
     const out = await ghCall(
