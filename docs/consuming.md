@@ -15,14 +15,15 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 
 > **Prerequisite — the labels merge-safety manages must already exist in the repo.**
 > `evaluate` reconciles two labels on each PR — **`update required`** and
-> **`merge conflict`** — and reads a **`breaking change`** label as a
-> breaking-change input where the repo uses that convention. Label reconciliation
-> goes through `gh` and **soft-fails silently**: if `update required` /
-> `merge conflict` do not exist in the repo, the check-run still posts its verdict
-> but those human-facing labels never appear, with no error surfaced. Create them
-> before adopting — `ai-ensure-labels` seeds the standard roster (which includes
-> these), or create them by hand — so the labels track the verdict from the first
-> run.
+> **`merge conflict`** — and both reads **and writes** a **`breaking change`**
+> label: it is an input (applying it by hand forces the breaking verdict) and,
+> since #53, an add-only output the check applies itself when the PR's diff proves
+> a dependency major bump on a functional-typed PR. Label reconciliation goes
+> through `gh` and **soft-fails silently**: if these labels do not exist in the
+> repo, the check-run still posts its verdict but the human-facing labels never
+> appear, with no error surfaced. Create them before adopting —
+> `ai-ensure-labels` seeds the standard roster (which includes all three), or
+> create them by hand — so the labels track the verdict from the first run.
 >
 > **The `hotfix` label is the base-health escape hatch.** When the base branch's
 > own CI is failing, `evaluate` fails the `merge-safety` check for every open PR

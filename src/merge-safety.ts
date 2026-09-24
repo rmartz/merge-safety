@@ -48,22 +48,41 @@
  * any failing GitHub Actions run on the base counts — but a failing *deploy* does
  * not: a red deploy under green Actions is likelier an external/environmental
  * fault no code change can fix, so it must not wedge the whole merge queue.
+ *
+ * **The breaking verdict is self-derived** (#53). `prIsBreaking` was once read
+ * only from the PR title's `!` marker or a `breaking change` label an LLM turn
+ * applies — a required, merge-gating check with a read-dependency on a
+ * non-deterministic producer, failing *permissively* when that turn never ran.
+ * It is now also derived from the PR's own diff (`breaking-diff.ts`); the title
+ * and label remain accepted inputs, so this is additive and never less strict.
+ *
+ * A fourth axis falls out of that: a **CI-sensitive package bump** (a linter or
+ * formatter whose output gates CI) must force every in-flight sibling to re-test
+ * under it once merged, and only the merged subject can carry that signal — a
+ * `ci` prefix, or a `!` that `merge-pr.py` stamps on functional types alone
+ * (rmartz/dotfiles#1559). On a non-`ci` title there is no route, so the verdict
+ * holds the PR and asks for the retitle rather than proposing a label that would
+ * be stripped at merge.
  */
+
+import { firstLine } from './conventional-commits.js';
+import {
+  hasSignal,
+  signalDetail,
+  type BreakingDiffKind,
+  type BreakingDiffSignal,
+} from './breaking-diff.js';
+
+/** Human phrasing for each diff-derived breaking signal, used in the check-run reason. */
+const BREAKING_DIFF_REASONS: Record<BreakingDiffKind, string> = {
+  'major-version-bump': 'dependency major bump',
+  'sensitive-package-bump': 'CI-sensitive package version change',
+  'material-test-changes': 'existing test file modified',
+};
 
 /** Labels the check drives on a PR. Structural (`as const`) per repo convention. */
 export const MERGE_SAFETY_LABELS = ['update required', 'merge conflict'] as const;
 export type MergeSafetyLabel = (typeof MERGE_SAFETY_LABELS)[number];
-
-/** Conventional-commit breaking marker in a subject: `type` / `type(scope)` + `!:`. */
-const BREAKING_SUBJECT_RE = /^[a-z]+(\([^)]*\))?!:/;
-/** A `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer anywhere in the message. */
-const BREAKING_FOOTER_RE = /^BREAKING[ -]CHANGE:/m;
-/** A `ci`-typed conventional commit (with or without a scope / `!`). */
-const CI_SUBJECT_RE = /^ci(\([^)]*\))?!?:/;
-
-function firstLine(message: string): string {
-  return message.split('\n', 1)[0] ?? '';
-}
 
 /** Nested markdown bullets, indented two spaces so they sit under a reason's `- `. */
 function nestedBullets(items: readonly string[]): string {
@@ -80,26 +99,6 @@ function withDetail(sentence: string, detail: readonly string[]): string {
   return detail.length ? `${sentence}\n${nestedBullets(detail)}` : sentence;
 }
 
-/** True when a commit message marks a breaking change (subject `!` or footer). */
-export function isBreakingCommitMessage(message: string): boolean {
-  return BREAKING_SUBJECT_RE.test(firstLine(message)) || BREAKING_FOOTER_RE.test(message);
-}
-
-/** True when a commit message is a `ci`-typed conventional commit. */
-export function isCiCommitMessage(message: string): boolean {
-  return CI_SUBJECT_RE.test(firstLine(message));
-}
-
-/** True when a PR title carries the conventional-commit breaking `!` marker. */
-export function isBreakingTitle(title: string): boolean {
-  return BREAKING_SUBJECT_RE.test(title.trim());
-}
-
-/** True when a PR title is a `ci`-typed conventional commit. */
-export function isCiTitle(title: string): boolean {
-  return CI_SUBJECT_RE.test(title.trim());
-}
-
 /**
  * True when a PR's state (`gh pr view --json state`: `OPEN` / `CLOSED` /
  * `MERGED`) warrants a merge-safety verdict. Only an OPEN PR can still merge, so
@@ -113,105 +112,39 @@ export function isEvaluablePrState(state: string): boolean {
   return state === 'OPEN';
 }
 
-/**
- * Check-run conclusions that count as a *failing* CI run. Expansive — a genuine
- * red, a timeout, or a startup failure all block — but deliberately excludes
- * `cancelled` (typically a superseded / re-run duplicate, not a real failure) and
- * the non-failing `neutral` / `skipped` / `success` / `action_required` / null.
- */
-const FAILING_CI_CONCLUSIONS = ['failure', 'timed_out', 'startup_failure'] as const;
-
 /** The label a PR carries to declare itself a broken-main fix, exempt from base health. */
 export const HOTFIX_LABEL = 'hotfix';
 
-/** The GitHub App slug that produces GitHub Actions check-runs (i.e. CI). */
-const GITHUB_ACTIONS_APP_SLUG = 'github-actions';
-
 /**
- * Check-run names that are GitHub Actions runs but *not* build/merge gates, so the
- * {@link failingFallbackBaseChecks} heuristic never treats them as a broken base.
- * The native "Dependabot Updates" job (posted as a check-run named `Dependabot`) is
- * the motivating case (#40): it fails on dependency-resolution errors unrelated to
- * whether the base builds. Matched case-insensitively.
+ * The `breaking change` label. Historically an *input* only — a human or an LLM
+ * turn applies it and the check trusts it. Since #53 it is also an *output*: the
+ * check adds it itself when the PR's own diff proves a breaking dependency major
+ * bump. Add-only, never reconciled away (see {@link MergeSafetyDecision.labels}),
+ * so an explicit human judgment is never silently reverted.
  */
-const NON_BUILD_PLATFORM_CHECKS = new Set(['dependabot', 'dependabot updates']);
+export const BREAKING_LABEL = 'breaking change';
 
-/**
- * A base-tip check-run reduced to what base-health classification needs: its name
- * (matched against the base branch's required status checks), its conclusion, and
- * the slug of the producing GitHub App (used by the fallback heuristic to tell a
- * GitHub Actions CI run from an external deploy integration).
- */
-export interface BaseCheckRun {
-  /** The check-run name (e.g. the workflow / job name), matched to a required context. */
-  name: string;
-  /** The check-run conclusion, or `null` while still in progress. */
-  conclusion: string | null;
-  /** The producing GitHub App's slug (e.g. `github-actions`, `vercel`), or `null`. */
-  appSlug: string | null;
-}
+// Base health is a separate concern — and its own module since #53 pushed this
+// file past the 480-line `max-lines` cap. Re-exported so `merge-safety.js` stays
+// the single import surface for everything the verdict consumes.
+export {
+  failingFallbackBaseChecks,
+  failingRequiredBaseChecks,
+  isFailingCiConclusion,
+  isGitHubActionsCheck,
+  isNonBuildPlatformCheck,
+  type BaseCheckRun,
+} from './base-health.js';
 
-/** True when a base check-run was produced by GitHub Actions (CI), not a deploy app. */
-export function isGitHubActionsCheck(check: BaseCheckRun): boolean {
-  return check.appSlug === GITHUB_ACTIONS_APP_SLUG;
-}
-
-/** True when a check-run's name is a known non-build platform job (e.g. Dependabot). */
-export function isNonBuildPlatformCheck(name: string): boolean {
-  return NON_BUILD_PLATFORM_CHECKS.has(name.trim().toLowerCase());
-}
-
-/** True when a check-run's conclusion counts as a CI failure. */
-export function isFailingCiConclusion(conclusion: string | null): boolean {
-  return conclusion !== null && (FAILING_CI_CONCLUSIONS as readonly string[]).includes(conclusion);
-}
-
-/**
- * The names of base checks that count as **failing CI**: a check whose name is one
- * of the base branch's **required status checks** AND that concluded in a failing
- * state. Scoping to required contexts is the crux of base-health (#40): only the
- * checks the repo has *declared* define a mergeable base can wedge the queue, so an
- * arbitrary failing Actions run that isn't a merge gate — the native "Dependabot
- * Updates" job, other bots, informational checks — never blocks unrelated PRs.
- *
- * `requiredContexts` is the set the repo requires; `null` (unreadable protection /
- * no ruleset) or `[]` (no required status checks) means nothing is declared to gate,
- * so base-health reports **no** failure — the same never-wedge posture the base-checks
- * probe takes on a transient read error. Callers pass the base tip's checks already
- * deduped to the latest run per name (the Checks API `?filter=latest`).
- */
-export function failingRequiredBaseChecks(
-  checks: readonly BaseCheckRun[],
-  requiredContexts: readonly string[] | null,
-): string[] {
-  if (!requiredContexts || requiredContexts.length === 0) return [];
-  const required = new Set(requiredContexts);
-  return checks
-    .filter((c) => required.has(c.name) && isFailingCiConclusion(c.conclusion))
-    .map((c) => c.name);
-}
-
-/**
- * The fallback base-health classifier, used when the base branch's required-status-check
- * set can't be read ({@link failingRequiredBaseChecks} preferred whenever it can).
- * Without a declared gate set to intersect, it approximates one: a failing **GitHub
- * Actions** run counts, except a known non-build platform job (the Dependabot job —
- * the #40 false positive this whole change targets) and any non-Actions producer (an
- * external deploy), so a red deploy under green Actions still doesn't wedge the queue.
- * Coarser than the required-check test, but it keeps a genuinely broken base caught in
- * repos with no queryable ruleset. Callers pass the base tip's checks deduped to the
- * latest run per name (the Checks API `?filter=latest`).
- */
-export function failingFallbackBaseChecks(checks: readonly BaseCheckRun[]): string[] {
-  return checks
-    .filter(
-      (c) =>
-        isGitHubActionsCheck(c) &&
-        isFailingCiConclusion(c.conclusion) &&
-        !isNonBuildPlatformCheck(c.name),
-    )
-    .map((c) => c.name);
-}
+// The subject predicates moved out alongside base health (#53, `max-lines`).
+// Re-exported so `merge-safety.js` stays the single import surface.
+export {
+  isBreakingCommitMessage,
+  isBreakingTitle,
+  isCiCommitMessage,
+  isCiTitle,
+  mayCarryBreakingMarker,
+} from './conventional-commits.js';
 
 /** The PR's changed files that also changed on the base, preserving PR order. */
 export function overlappingFiles(
@@ -275,6 +208,20 @@ export interface MergeSafetyFacts {
   overlappingFiles: readonly string[];
   /** The names of the failing base CI checks, surfaced in the base-health reason. */
   failingBaseChecks: readonly string[];
+  /**
+   * The breaking signals the PR's **own diff** carries (#53) — a dependency major
+   * bump, a CI-sensitive linter/formatter version change, or material changes to
+   * existing tests. These feed `prIsBreaking` alongside the title marker and the
+   * label, so the verdict no longer depends on an LLM turn having run.
+   */
+  prBreakingDiffSignals: readonly BreakingDiffSignal[];
+  /**
+   * The PR title's conventional type is functional (`feat`/`fix`/`perf`/`revert`),
+   * so a `breaking change` label on it would survive `merge-pr.py`'s #1559 check
+   * and become a `!` on the squashed subject. False for `chore`/`ci`/`docs`/… —
+   * where a label would be stripped at merge and the signal silently lost.
+   */
+  prMayCarryBreakingMarker: boolean;
 }
 
 export type MergeSafetyConclusion = 'success' | 'failure';
@@ -289,10 +236,16 @@ export interface MergeSafetyDecision {
   /** Blocked because the base's CI is failing and this PR is not a hotfix (the base-health axis). */
   baseUnhealthy: boolean;
   /**
+   * The PR bumps a CI-sensitive linter/formatter but is not `ci`-typed, so nothing
+   * will force in-flight siblings to re-test under it after merge (the retitle axis,
+   * #53). See the reason text for why a `breaking change` label cannot substitute.
+   */
+  needsCiRetitle: boolean;
+  /**
    * Short state phrase for the check-run title — the verdict at a glance. One of
    * `No update required` / `Update required` / `Merge conflict` / `Base CI
-   * failing` / `Could not evaluate`. The check-run *name* stays the stable
-   * `merge-safety` (so branch
+   * failing` / `Retitle as a CI change` / `Could not evaluate`. The check-run
+   * *name* stays the stable `merge-safety` (so branch
    * protection can match it); this varies with the outcome instead.
    */
   title: string;
@@ -300,8 +253,18 @@ export interface MergeSafetyDecision {
   reasons: string[];
   /** One-line check-run summary. */
   summary: string;
-  /** Labels to reconcile: `add` the ones that now apply, `remove` the rest. */
-  labels: { add: MergeSafetyLabel[]; remove: MergeSafetyLabel[] };
+  /**
+   * Labels the check drives.
+   *
+   * `add` / `remove` are **reconciled**: the check owns `update required` and
+   * `merge conflict` outright, adding the ones that apply and removing the rest.
+   *
+   * `addOnly` is **never removed**. It carries `breaking change`, which is also a
+   * human/agent input: the check adds it when the diff proves a breaking change,
+   * but never takes one away, so an explicit human judgment is never silently
+   * reverted (#53). A caller reconciling labels must not derive removals from it.
+   */
+  labels: { add: MergeSafetyLabel[]; remove: MergeSafetyLabel[]; addOnly: string[] };
 }
 
 /**
@@ -341,7 +304,14 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     );
   }
   if (stale && facts.prIsBreaking) {
-    reasons.push('This PR is a breaking change — it must be current with the base before merge.');
+    reasons.push(
+      withDetail(
+        'This PR is a breaking change — it must be current with the base before merge.',
+        facts.prBreakingDiffSignals.flatMap((s) =>
+          s.detail.map((d) => `${BREAKING_DIFF_REASONS[s.kind]}: ${d}`),
+        ),
+      ),
+    );
   }
   if (stale && facts.prIsCi && !facts.prIsHotfix) {
     reasons.push(
@@ -368,6 +338,19 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     );
   }
 
+  // The retitle axis (#53). A CI-sensitive linter/formatter bump must force every
+  // in-flight sibling to re-test under the new tool version after this merges, and
+  // that signal can only travel on the merged subject: either a `ci` prefix or a
+  // `!` marker. The `!` route is unavailable here — `merge-pr.py` stamps `!` only
+  // on a functional type and *strips* a `breaking change` label off anything else
+  // (#1559), and the fleet's answer for exactly this case is the `ci` type, not the
+  // label. So a non-`ci` title is a dead end no label can rescue: fail, and say so.
+  // Unlike the staleness clauses this is not gated on `!isCurrent` — merging a
+  // current PR under the wrong title loses the signal just as permanently.
+  const needsCiRetitle = hasSignal(facts.prBreakingDiffSignals, 'sensitive-package-bump')
+    ? !facts.prIsCi
+    : false;
+
   const needsUpdate =
     stale &&
     (facts.baseBreakingSinceMergeBase ||
@@ -376,8 +359,22 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
       (facts.prIsCi && !facts.prIsHotfix) ||
       facts.fileOverlap);
 
+  // Listed last so a PR that is also stale or conflicting leads with the reason its
+  // title names — the summary takes reasons[0], and the two must agree.
+  if (needsCiRetitle) {
+    reasons.push(
+      withDetail(
+        'This PR changes a CI-sensitive package version, which can redden the format/lint ' +
+          'gate on PRs that never touched the bumped file. Retitle it with the `ci` type ' +
+          '(e.g. `ci(deps): …`) so merged siblings are forced to re-test under it — a ' +
+          '`breaking change` label cannot carry this signal on a non-functional type:',
+        signalDetail(facts.prBreakingDiffSignals, 'sensitive-package-bump'),
+      ),
+    );
+  }
+
   const conclusion: MergeSafetyConclusion =
-    needsUpdate || facts.hasConflict || baseUnhealthy ? 'failure' : 'success';
+    needsUpdate || facts.hasConflict || baseUnhealthy || needsCiRetitle ? 'failure' : 'success';
 
   // A reason may now carry nested detail bullets; the one-line summary takes only
   // its headline sentence, leaving the specifics to the full reasons list.
@@ -395,22 +392,39 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
       ? 'Base CI failing'
       : needsUpdate
         ? 'Update required'
-        : 'No update required';
+        : needsCiRetitle
+          ? 'Retitle as a CI change'
+          : 'No update required';
 
   const add: MergeSafetyLabel[] = [];
   if (needsUpdate) add.push('update required');
   if (facts.hasConflict) add.push('merge conflict');
   const remove = MERGE_SAFETY_LABELS.filter((l) => !add.includes(l));
 
+  // `breaking change` is proposed only for a dependency **major** bump on a
+  // functional-typed PR — the one diff signal that is breaking in the sense `!`
+  // means, on the one title shape where the label survives to become a `!`
+  // (#1559). Deliberately NOT proposed for the other two signals: a CI-sensitive
+  // bump is answered by the `ci` retitle above, and a material test change is a
+  // staleness signal, not a public-API break — labelling either would stamp `!`
+  // on a functional-typed PR and fire a spurious semantic-release MAJOR.
+  const addOnly: string[] = [];
+  if (
+    hasSignal(facts.prBreakingDiffSignals, 'major-version-bump') &&
+    facts.prMayCarryBreakingMarker
+  )
+    addOnly.push(BREAKING_LABEL);
+
   return {
     conclusion,
     needsUpdate,
     hasConflict: facts.hasConflict,
     baseUnhealthy,
+    needsCiRetitle,
     title,
     reasons,
     summary,
-    labels: { add, remove },
+    labels: { add, remove, addOnly },
   };
 }
 
@@ -429,9 +443,10 @@ export function errorMergeSafetyDecision(message: string): MergeSafetyDecision {
     needsUpdate: false,
     hasConflict: false,
     baseUnhealthy: false,
+    needsCiRetitle: false,
     title: 'Could not evaluate',
     reasons: [message],
     summary: `Could not evaluate merge safety: ${message}`,
-    labels: { add: [], remove: [] },
+    labels: { add: [], remove: [], addOnly: [] },
   };
 }

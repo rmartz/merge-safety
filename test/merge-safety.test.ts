@@ -6,6 +6,7 @@ import {
   isBreakingTitle,
   isCiTitle,
   isEvaluablePrState,
+  mayCarryBreakingMarker,
   isFailingCiConclusion,
   isGitHubActionsCheck,
   isNonBuildPlatformCheck,
@@ -35,6 +36,8 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
     baseCiCommits: [],
     overlappingFiles: [],
     failingBaseChecks: [],
+    prBreakingDiffSignals: [],
+    prMayCarryBreakingMarker: false,
     ...overrides,
   };
 }
@@ -77,6 +80,14 @@ describe('isBreakingTitle', () => {
   it('mirrors the subject-marker rule on a PR title', () => {
     expect(isBreakingTitle('feat(worktree)!: change default base')).toBe(true);
     expect(isBreakingTitle('chore: bump deps')).toBe(false);
+  });
+
+  it('accepts the pre-scope `!` form the coordinator has always accepted (#53)', () => {
+    // `feat!(scope):` is not the spec form, but a hand-typed title can take it and
+    // the Python `_BREAKING_RE` matches it — reading it as non-breaking here was a
+    // live permissive drift between the two implementations.
+    expect(isBreakingTitle('feat!(worktree): change default base')).toBe(true);
+    expect(isBreakingTitle('feat!: change default base')).toBe(true);
   });
 });
 
@@ -499,6 +510,149 @@ describe('errorMergeSafetyDecision', () => {
     expect(d.hasConflict).toBe(false);
     expect(d.baseUnhealthy).toBe(false);
     expect(d.reasons).toEqual(['git log failed for BASE..origin/main']);
-    expect(d.labels).toEqual({ add: [], remove: [] });
+    expect(d.labels).toEqual({ add: [], remove: [], addOnly: [] });
   });
 });
+
+describe('mayCarryBreakingMarker', () => {
+  it('accepts the functional conventional types, with or without scope/marker', () => {
+    expect(mayCarryBreakingMarker('feat: add')).toBe(true);
+    expect(mayCarryBreakingMarker('fix(auth): repair')).toBe(true);
+    expect(mayCarryBreakingMarker('perf!: speed up')).toBe(true);
+    expect(mayCarryBreakingMarker('revert(x)!: undo')).toBe(true);
+  });
+
+  it('rejects every non-functional type — a label there is stripped at merge (#1559)', () => {
+    expect(mayCarryBreakingMarker('chore(deps): bump prettier')).toBe(false);
+    expect(mayCarryBreakingMarker('ci(deps): bump black')).toBe(false);
+    expect(mayCarryBreakingMarker('docs: clarify')).toBe(false);
+    expect(mayCarryBreakingMarker('refactor(core): extract')).toBe(false);
+  });
+
+  it('rejects a non-conventional title', () => {
+    expect(mayCarryBreakingMarker('just some words')).toBe(false);
+    expect(mayCarryBreakingMarker('')).toBe(false);
+  });
+});
+
+/** A facts fixture carrying one diff-derived breaking signal. */
+function withSignal(
+  kind: 'major-version-bump' | 'sensitive-package-bump' | 'material-test-changes',
+  detail: string[],
+  over: Partial<MergeSafetyFacts> = {},
+): MergeSafetyFacts {
+  return makeFacts({
+    prIsBreaking: true,
+    prBreakingDiffSignals: [{ kind, detail }],
+    ...over,
+  });
+}
+
+describe('evaluateMergeSafety — the diff-derived breaking signals (#53)', () => {
+  it('names the triggering signal in the breaking reason of a stale PR', () => {
+    const d = evaluateMergeSafety(
+      withSignal('major-version-bump', ['left-pad 2.1.0 → 3.0.0'], { isCurrent: false }),
+    );
+    expect(d.needsUpdate).toBe(true);
+    expect(d.reasons.join('\n')).toContain('dependency major bump: left-pad 2.1.0 → 3.0.0');
+  });
+
+  it('proposes `breaking change` for a major bump on a functional-typed PR', () => {
+    const d = evaluateMergeSafety(
+      withSignal('major-version-bump', ['left-pad 2.1.0 → 3.0.0'], {
+        prMayCarryBreakingMarker: true,
+      }),
+    );
+    expect(d.labels.addOnly).toEqual(['breaking change']);
+    // Add-only: it never appears in the reconciled removals.
+    expect(d.labels.remove).toEqual([...MERGE_SAFETY_LABELS]);
+  });
+
+  it('withholds the label on a non-functional type, where merge would strip it', () => {
+    const d = evaluateMergeSafety(
+      withSignal('major-version-bump', ['left-pad 2.1.0 → 3.0.0'], {
+        prMayCarryBreakingMarker: false,
+      }),
+    );
+    expect(d.labels.addOnly).toEqual([]);
+  });
+
+  it('never proposes the label for a test-only signal — that would fire a spurious major', () => {
+    const d = evaluateMergeSafety(
+      withSignal('material-test-changes', ['a.test.ts'], { prMayCarryBreakingMarker: true }),
+    );
+    expect(d.labels.addOnly).toEqual([]);
+    expect(d.needsCiRetitle).toBe(false);
+  });
+
+  it('never proposes the label for a CI-sensitive bump, even on a functional type', () => {
+    const d = evaluateMergeSafety(
+      withSignal('sensitive-package-bump', ['prettier 3.9.7 → 3.9.8'], {
+        prMayCarryBreakingMarker: true,
+      }),
+    );
+    expect(d.labels.addOnly).toEqual([]);
+  });
+});
+
+describe('evaluateMergeSafety — the retitle axis (#53)', () => {
+  const sensitive = ['prettier 3.9.7 → 3.9.8'];
+
+  it('fails a current, conflict-free PR that bumps a linter without the `ci` type', () => {
+    const d = evaluateMergeSafety(withSignal('sensitive-package-bump', sensitive));
+    expect(d.needsCiRetitle).toBe(true);
+    expect(d.conclusion).toBe('failure');
+    expect(d.needsUpdate).toBe(false);
+    expect(d.title).toBe('Retitle as a CI change');
+    expect(d.summary).toContain('CI-sensitive package version');
+    expect(d.reasons.join('\n')).toContain('prettier 3.9.7 → 3.9.8');
+  });
+
+  it('clears once the PR is `ci`-typed — the prefix carries the sibling rebase', () => {
+    const d = evaluateMergeSafety(
+      withSignal('sensitive-package-bump', sensitive, { prIsCi: true }),
+    );
+    expect(d.needsCiRetitle).toBe(false);
+    expect(d.conclusion).toBe('success');
+    expect(d.title).toBe('No update required');
+  });
+
+  it('does not fire for the other diff signals', () => {
+    expect(
+      evaluateMergeSafety(withSignal('major-version-bump', ['x 1.0.0 → 2.0.0'])).needsCiRetitle,
+    ).toBe(false);
+    expect(
+      evaluateMergeSafety(withSignal('material-test-changes', ['a.test.ts'])).needsCiRetitle,
+    ).toBe(false);
+  });
+
+  it('yields the title to staleness, and its reason stays last so the summary agrees', () => {
+    const d = evaluateMergeSafety(
+      withSignal('sensitive-package-bump', sensitive, {
+        isCurrent: false,
+        fileOverlap: true,
+        overlappingFiles: ['src/a.ts'],
+      }),
+    );
+    expect(d.needsCiRetitle).toBe(true);
+    expect(d.title).toBe('Update required');
+    expect(firstLineOf(d.summary)).toBe(firstLineOf(d.reasons[0] ?? ''));
+    expect(d.reasons[d.reasons.length - 1]).toContain('Retitle it with the `ci` type');
+  });
+
+  it('yields the title to a conflict and to a red base', () => {
+    const conflicting = evaluateMergeSafety(
+      withSignal('sensitive-package-bump', sensitive, { hasConflict: true }),
+    );
+    expect(conflicting.title).toBe('Merge conflict');
+    const redBase = evaluateMergeSafety(
+      withSignal('sensitive-package-bump', sensitive, { baseCiFailing: true }),
+    );
+    expect(redBase.title).toBe('Base CI failing');
+  });
+});
+
+/** The headline sentence of a reason, which is all the one-line summary carries. */
+function firstLineOf(text: string): string {
+  return text.split('\n', 1)[0] ?? '';
+}
