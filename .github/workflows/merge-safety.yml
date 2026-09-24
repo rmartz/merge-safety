@@ -77,7 +77,6 @@ permissions:
   pull-requests: write # reconcile update-required / merge-conflict labels
   contents: read
   actions: write # dispatch per-PR evaluate runs on the push fan-out
-  packages: read # install the CLI from GitHub Packages
 
 # THERE IS DELIBERATELY NO WORKFLOW-LEVEL `concurrency` HERE. A per-PR group was
 # tried (and cancel-in-progress toggled both ways) and removed in #48: GitHub allows
@@ -127,8 +126,6 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://npm.pkg.github.com
-          scope: '@rmartz'
       - name: Resolve @rmartz/merge-safety version
         id: ms
         env:
@@ -159,12 +156,14 @@ jobs:
             fi
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+      # The CLI is public on npmjs, so the install needs no token. The scoped
+      # registry is pinned explicitly so an ambient `@rmartz:registry` mapping
+      # (e.g. a GitHub Packages one) can't redirect it: versions after 0.6.0
+      # exist only on npmjs.
       - name: Install ai-merge-safety
-        env:
-          # The public @rmartz/merge-safety package on GitHub Packages is readable
-          # with the built-in GITHUB_TOKEN — no consumer PAT required.
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
+        run: >-
+          npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
+          --@rmartz:registry=https://registry.npmjs.org/
       # Fetch the PR head as git data so merge-base/diffs resolve — the dispatched
       # (workflow_dispatch) path checks out the base and would otherwise lack it.
       - run: git fetch --quiet origin "${BASE_REF}" "pull/${PR_NUMBER}/head"
@@ -205,8 +204,6 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://npm.pkg.github.com
-          scope: '@rmartz'
       - name: Resolve @rmartz/merge-safety version
         id: ms
         env:
@@ -234,7 +231,7 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Install ai-merge-safety
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
+        run: >-
+          npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
+          --@rmartz:registry=https://registry.npmjs.org/
       - run: ai-merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"

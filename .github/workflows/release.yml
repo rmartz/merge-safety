@@ -3,8 +3,15 @@ name: Release
 # Automatic releases, tag/npm-as-source-of-truth (Option B, modeled on rmartz/envctl
 # and rmartz/repo-hygiene). semantic-release runs on every push to main: it analyzes
 # the conventional-commit subjects since the last vX.Y.Z tag, computes the next
-# version, publishes @rmartz/merge-safety to GitHub Packages, creates the git tag +
-# GitHub Release, and comments on released PRs/issues.
+# version, publishes @rmartz/merge-safety to npmjs, creates the git tag + GitHub
+# Release, and comments on released PRs/issues.
+#
+# npm auth is OIDC trusted publishing: npmjs trusts THIS workflow file
+# (`release.yml`) in rmartz/merge-safety, so there is no NPM_TOKEN secret. Renaming
+# this file breaks publishing until the trusted publisher on npmjs is updated to
+# match. Provenance attestations are generated automatically. Versions up to 0.6.0
+# were published to GitHub Packages and stay there, so reusable-workflow pins at
+# those tags keep installing from GitHub Packages; later tags install from npmjs.
 #
 # There is deliberately NO @semantic-release/git plugin: package.json is never bumped
 # back to main (it stays a placeholder — see its "version" field), so the released
@@ -27,7 +34,7 @@ concurrency: release
 
 permissions:
   contents: write # create tags and GitHub releases
-  packages: write # publish to GitHub Packages
+  id-token: write # npm trusted publishing (OIDC) + provenance
   issues: write # semantic-release comments on released issues
   pull-requests: write # semantic-release comments on released PRs
 
@@ -46,6 +53,3 @@ jobs:
       - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # @semantic-release/npm authenticates to the publishConfig registry
-          # (GitHub Packages) with this token; GITHUB_TOKEN has packages:write.
-          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}

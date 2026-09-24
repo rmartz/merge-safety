@@ -83,7 +83,7 @@ permissions:
   pull-requests: write # reconcile update-required / merge-conflict labels
   contents: read
   actions: write # dispatch per-PR evaluate runs on the push fan-out
-  packages: read # install the CLI from GitHub Packages
+  packages: read # only for pins at v0.6.0 or earlier (GitHub Packages install)
 jobs:
   merge-safety:
     uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@<sha> # vX.Y.Z
@@ -173,8 +173,9 @@ Why each piece is there:
   `caller-workflow: <its filename>`. (This repo's own caller,
   [`merge-safety-self.yml`](../.github/workflows/merge-safety-self.yml), does
   exactly that, since `merge-safety.yml` here is the reusable workflow itself.)
-- **`secrets: inherit`** — a safe default; the built-in `GITHUB_TOKEN`
-  (via `packages: read`) covers the public CLI install.
+- **`secrets: inherit`** — a safe default. The CLI install itself needs no token:
+  current versions are public on npmjs. (Pins at v0.6.0 or earlier install from
+  GitHub Packages with the built-in `GITHUB_TOKEN` via `packages: read`.)
 
 ## 2. Keep the pin current
 
@@ -219,9 +220,11 @@ auto-merge wait for the safety verdict.
 > checks. (Alternatively, set it by name through the branch-protection API before it
 > has ever run.)
 
-**Auth:** the published `@rmartz/merge-safety` package is **public** on GitHub
-Packages, readable with the built-in `GITHUB_TOKEN` — the `packages: read`
-permission above is all the install needs, no per-repo PAT.
+**Auth:** the published `@rmartz/merge-safety` package is **public** on npmjs, so
+the install needs no token or PAT. Versions up to 0.6.0 were published to GitHub
+Packages, and a pin at one of those tags installs from there using the built-in
+`GITHUB_TOKEN` — that is the only reason for the `packages: read` permission above,
+and you can remove it once Dependabot has moved your pin past v0.6.0.
 
 > **Several overlapping `merge-safety` runs on one PR are expected.** A single PR
 > action can fire several `pull_request_target` events near-simultaneously
