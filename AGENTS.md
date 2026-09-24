@@ -56,6 +56,14 @@ file as off-limits just because bootstrap once seeded it.
   caller, pinned and bumped by Dependabot; it runs conflict-markers, action-pins,
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
+- **merge-safety arrives the same way:** this repo consumes its own reusable
+  workflow through the [`merge-safety-self.yml`](.github/workflows/merge-safety-self.yml)
+  caller — the exact consumer caller, pinned to a **released** SHA and bumped by
+  Dependabot, never a local `./` reference (the reusable workflow resolves the CLI
+  version from the release tag at its pinned commit, and an unreleased PR commit
+  has none). So PRs here are gated by the last _released_ merge-safety, not the
+  code under review — consumption, not full CI dogfooding. `merge-safety` is a
+  required status check on `main`, as in every consumer.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
   build / package / release-notes-render ([ci.yml](.github/workflows/ci.yml)), the PR-title
   lint, the post-merge commit-convention tripwire
@@ -148,8 +156,9 @@ Most are enforced by eslint; the intent:
   on Dependabot/fork PRs). `Release notes render` is a **required status check** on `main`
   (#46), so it actually blocks a merge — including Dependabot auto-merge, which gates only
   on required checks — rather than merely going red on the PR. Being required also folds it
-  into merge-safety's own base-health axis (which reads the base's required status checks),
-  so this repo can finally see a broken changelog toolchain on its own base. The post-merge
+  into merge-safety's base-health axis (which reads the base's required status checks), so
+  through the `merge-safety-self.yml` caller this repo sees a broken changelog toolchain on
+  its own base. The post-merge
   `Release` publish job (release.yml) is deliberately **not** required — it is a push-only
   publish, not a PR gate; the pre-merge render guard is its PR-time equivalent.
 

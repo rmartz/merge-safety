@@ -1,0 +1,41 @@
+name: merge-safety
+
+# This repo consumes its own merge-safety through the exact caller every consuming
+# repo uses (docs/consuming.md), so its own PRs get the `merge-safety` check-run and
+# it can be a required status check here too. It pins a RELEASED reusable workflow
+# by SHA — never a local `./.github/workflows/merge-safety.yml` reference — because
+# the reusable workflow resolves the CLI version from the release tag at its pinned
+# commit, and an unreleased PR commit has no tag. Dependabot's github-actions
+# ecosystem bumps the pin after each release, like any consumer.
+#
+# The caller is named merge-safety-self.yml because merge-safety.yml is the
+# reusable workflow itself; `caller-workflow` points the invalidate fan-out's
+# per-PR re-dispatch at this file instead of the conventional default.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  push:
+    branches: [main]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to evaluate
+        required: true
+
+permissions:
+  checks: write # post/flip the merge-safety check-run
+  pull-requests: write # reconcile update-required / merge-conflict labels
+  contents: read
+  actions: write # dispatch per-PR evaluate runs on the push fan-out
+  packages: read # install the CLI from GitHub Packages
+
+jobs:
+  merge-safety:
+    uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@74a4e7621bbfaf3b12f8bf015533e1ffc3475a2b # v0.3.0
+    with:
+      pr: ${{ inputs.pr }}
+      caller-workflow: merge-safety-self.yml
+    secrets: inherit
