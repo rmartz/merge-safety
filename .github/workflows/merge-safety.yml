@@ -69,21 +69,28 @@ permissions:
   actions: write # dispatch per-PR evaluate runs on the push fan-out
   packages: read # install the CLI from GitHub Packages
 
-concurrency:
-  # push and a base-branch check_suite completion both fan out (invalidate), so they
-  # share one serialized group; PR events key on the PR number.
-  group: merge-safety-${{ (github.event_name == 'push' || github.event_name == 'check_suite') && 'invalidate' || github.event.pull_request.number || inputs.pr }}
-  # PR events supersede; the invalidate fan-out serializes. A single Dependabot
-  # action fires a burst of pull_request_target events (opened + labeled×N +
-  # edited within ~1s); with cancel-in-progress:false those queue one run and
-  # leave the previously-pending ones *cancelled*, which renders as a spurious red
-  # `Invalidate open PRs (base moved)` entry on the consumer PR (issue #33).
-  # Cancelling the in-flight PR run when a newer event supersedes it reads as
-  # "superseded" instead, and still preserves latest-wins — the newest event
-  # (final label/title/base state) is always the run that posts the check-run.
-  # The invalidate group keeps `false`: its base-moved fan-out must serialize and
-  # never be cancelled, so no base move is ever dropped.
-  cancel-in-progress: ${{ github.event_name != 'push' && github.event_name != 'check_suite' }}
+# THERE IS DELIBERATELY NO WORKFLOW-LEVEL `concurrency` HERE. A per-PR group was
+# tried (and cancel-in-progress toggled both ways) and removed in #48: GitHub allows
+# only one pending run per group and cancels any run it supersedes, so a burst of
+# pull_request_target events on one PR — opening a PR and applying three labels fires
+# four events in about a second — left `cancelled` runs on the consumer's checks list.
+# That reads as a failure to anything inspecting conclusions (it is the same conclusion
+# a timed-out run produces) and it accounted for 218 cancelled runs across 11 consumer
+# repos. `cancel-in-progress: true` does not help: it only trades cancelled *pending*
+# runs for cancelled *in-progress* ones.
+#
+# Letting the burst's runs overlap is safe because `evaluate` is idempotent. It takes
+# only the PR number and base ref from the event; every fact it judges on — title,
+# labels, mergeable state, head SHA, base check-runs, the base's required contexts —
+# is read live from the API at run time (see runEvaluate in src/bin/merge-safety.ts).
+# Concurrent runs for one PR therefore compute the *same* verdict rather than racing
+# to impose different ones, post the same check-run (GitHub gates on the latest run
+# per name), and issue the same idempotent label add/removes. Ordering does not change
+# the outcome, so there is nothing for a concurrency group to protect. The cost is a
+# few overlapping ~1-minute runs per burst, which is the trade every composite-Action
+# consumer in the fleet already makes.
+#
+# `invalidate` is the exception and keeps its own serialized group below.
 
 jobs:
   evaluate:
@@ -150,6 +157,14 @@ jobs:
 
   invalidate:
     name: Invalidate open PRs (base moved)
+    # The one place serialization is load-bearing: push and a base-branch check_suite
+    # completion both fan out over every open PR, so they share a single group and are
+    # never cancelled — no base move may be dropped. Scoping the group to this job (and
+    # not the workflow) is also what keeps a PR-event run from ever queueing behind a
+    # fan-out and being cancelled by the next PR event (#48).
+    concurrency:
+      group: merge-safety-invalidate
+      cancel-in-progress: false
     # Fan out on a push to the base OR when the base branch's own GitHub Actions CI
     # concludes (check_suite completed) — the latter re-holds already-cleared PRs
     # once base health flips (a push-time re-eval sees base CI still *pending*, so

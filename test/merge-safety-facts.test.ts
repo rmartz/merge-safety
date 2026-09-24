@@ -39,6 +39,7 @@ function cleanStaleGit(): GitRunner {
     'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
     'diff --name-only BASE origin/main': 'src/a.ts',
     'diff --name-only BASE HEAD1': 'src/b.ts',
+    'diff --unified=0 BASE HEAD1': '',
   });
 }
 
@@ -51,6 +52,7 @@ describe('gatherMergeSafetyFacts', () => {
         'sha-break\nfeat(api)!: rename field\0sha-ci\nci: add job',
       'diff --name-only BASE origin/main': 'src/a.ts\nsrc/shared.ts',
       'diff --name-only BASE HEAD1': 'src/shared.ts\nsrc/b.ts',
+      'diff --unified=0 BASE HEAD1': '',
     });
 
     const facts = await gatherMergeSafetyFacts(meta, {
@@ -81,6 +83,7 @@ describe('gatherMergeSafetyFacts', () => {
         'sha-foot\nfeat: add flag\n\nBREAKING CHANGE: config renamed',
       'diff --name-only BASE origin/main': 'src/a.ts',
       'diff --name-only BASE HEAD1': 'src/b.ts',
+      'diff --unified=0 BASE HEAD1': '',
     });
 
     const facts = await gatherMergeSafetyFacts(meta, {
@@ -100,6 +103,7 @@ describe('gatherMergeSafetyFacts', () => {
       'log -z --format=%H%n%B TIP..origin/main': '',
       'diff --name-only TIP origin/main': '',
       'diff --name-only TIP HEAD1': 'src/b.ts',
+      'diff --unified=0 TIP HEAD1': '',
     });
 
     const facts = await gatherMergeSafetyFacts(meta, {
@@ -229,6 +233,7 @@ describe('gatherMergeSafetyFacts', () => {
       // log key absent → null
       'diff --name-only BASE origin/main': 'src/a.ts',
       'diff --name-only BASE HEAD1': 'src/b.ts',
+      'diff --unified=0 BASE HEAD1': '',
     });
     await expect(
       gatherMergeSafetyFacts(meta, {
@@ -261,5 +266,96 @@ describe('baseBranchName', () => {
     expect(baseBranchName('origin/main')).toBe('main');
     expect(baseBranchName('refs/heads/release/1.x')).toBe('release/1.x');
     expect(baseBranchName('main')).toBe('main');
+  });
+});
+
+describe('gatherMergeSafetyFacts — the diff-derived breaking signals (#53)', () => {
+  /** A stale-PR git fake whose PR patch is `prDiff`. */
+  function gitWithPrDiff(prDiff: string): GitRunner {
+    return fakeGit({
+      'merge-base HEAD1 origin/main': 'BASE',
+      'rev-parse origin/main': 'TIP',
+      'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
+      'diff --name-only BASE origin/main': 'src/a.ts',
+      'diff --name-only BASE HEAD1': 'package.json',
+      'diff --unified=0 BASE HEAD1': prDiff,
+    });
+  }
+
+  const prettierBump = [
+    'diff --git a/package.json b/package.json',
+    '--- a/package.json',
+    '+++ b/package.json',
+    '@@ -1 +1 @@',
+    '-    "prettier": "^3.9.7",',
+    '+    "prettier": "^3.9.8",',
+  ].join('\n');
+
+  it('derives prIsBreaking from the diff when the title and labels say nothing', async () => {
+    const facts = await gatherMergeSafetyFacts(
+      { ...meta, title: 'chore(deps): bump prettier' },
+      {
+        git: gitWithPrDiff(prettierBump),
+        baseChecks: fakeChecks(),
+        requiredChecks: fakeRequired(),
+      },
+    );
+
+    expect(facts.prIsBreaking).toBe(true);
+    expect(facts.prBreakingDiffSignals.map((s) => s.kind)).toEqual(['sensitive-package-bump']);
+    expect(facts.prBreakingDiffSignals[0]?.detail).toEqual(['prettier 3.9.7 → 3.9.8']);
+  });
+
+  it('leaves prIsBreaking false when the diff, title and labels all say nothing', async () => {
+    const facts = await gatherMergeSafetyFacts(meta, {
+      git: gitWithPrDiff(''),
+      baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
+    });
+
+    expect(facts.prIsBreaking).toBe(false);
+    expect(facts.prBreakingDiffSignals).toEqual([]);
+  });
+
+  it('keeps the label as an independent input — it still forces prIsBreaking alone', async () => {
+    const facts = await gatherMergeSafetyFacts(
+      { ...meta, labels: ['Breaking Change'] },
+      { git: gitWithPrDiff(''), baseChecks: fakeChecks(), requiredChecks: fakeRequired() },
+    );
+
+    expect(facts.prIsBreaking).toBe(true);
+    expect(facts.prBreakingDiffSignals).toEqual([]);
+  });
+
+  it('records whether the title type could carry a `!` marker', async () => {
+    const opts = {
+      git: gitWithPrDiff(''),
+      baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
+    };
+    const functional = await gatherMergeSafetyFacts({ ...meta, title: 'fix: repair' }, opts);
+    expect(functional.prMayCarryBreakingMarker).toBe(true);
+
+    const nonFunctional = await gatherMergeSafetyFacts({ ...meta, title: 'chore: tidy' }, opts);
+    expect(nonFunctional.prMayCarryBreakingMarker).toBe(false);
+  });
+
+  it('throws when the PR patch cannot be read — an ungatherable PR is never green', async () => {
+    const git = fakeGit({
+      'merge-base HEAD1 origin/main': 'BASE',
+      'rev-parse origin/main': 'TIP',
+      'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
+      'diff --name-only BASE origin/main': 'src/a.ts',
+      'diff --name-only BASE HEAD1': 'src/b.ts',
+      // no `diff --unified=0` key → the runner yields null
+    });
+
+    await expect(
+      gatherMergeSafetyFacts(meta, {
+        git,
+        baseChecks: fakeChecks(),
+        requiredChecks: fakeRequired(),
+      }),
+    ).rejects.toThrow('git diff failed');
   });
 });

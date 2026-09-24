@@ -6,6 +6,7 @@
  * the boolean facts that module consumes.
  */
 import { boundedRun } from './lib/bounded-subprocess.js';
+import { breakingDiffSignals } from './breaking-diff.js';
 import {
   failingFallbackBaseChecks,
   failingRequiredBaseChecks,
@@ -13,7 +14,9 @@ import {
   isBreakingTitle,
   isCiCommitMessage,
   isCiTitle,
+  mayCarryBreakingMarker,
   overlappingFiles,
+  BREAKING_LABEL,
   HOTFIX_LABEL,
   type BaseCheckRun,
   type BaseCommit,
@@ -80,9 +83,6 @@ export interface GatherOptions {
   /** Probe for the base branch's required status checks, scoping base health (#40). */
   requiredChecks: RequiredChecksProbe;
 }
-
-/** The `breaking change` label forces `prIsBreaking` regardless of the title. */
-const BREAKING_LABEL = 'breaking change';
 
 function splitLines(out: string | null): string[] {
   return (out ?? '')
@@ -168,6 +168,14 @@ export async function gatherMergeSafetyFacts(
   const prFiles = splitLines(prFilesOut);
   const overlaps = overlappingFiles(prFiles, baseFiles);
 
+  // The PR's own patch, for the diff-derived breaking signals (#53). `--unified=0`
+  // drops every context line: the detectors read only `+`/`-` lines and the
+  // `diff --git` headers, so it is the same answer off a fraction of the bytes —
+  // which matters because `boundedRun` accumulates stdout in memory unbounded.
+  const prDiff = await git(['diff', '--unified=0', mergeBase, meta.headSha]);
+  if (prDiff === null) throw new Error(`git diff failed for ${mergeBase}..${meta.headSha}`);
+  const diffSignals = breakingDiffSignals(prDiff);
+
   const labels = meta.labels.map((l) => l.toLowerCase());
 
   return {
@@ -175,7 +183,10 @@ export async function gatherMergeSafetyFacts(
     // Each boolean is derived from its detail list — one computation, two views.
     baseBreakingSinceMergeBase: baseBreakingCommits.length > 0,
     baseCiSinceMergeBase: baseCiCommits.length > 0,
-    prIsBreaking: isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL),
+    // Additive by construction: the title marker and the label remain inputs, and
+    // the diff can only ever add a reason to treat the PR as breaking (#53).
+    prIsBreaking:
+      isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL) || diffSignals.length > 0,
     prIsCi: isCiTitle(meta.title),
     fileOverlap: overlaps.length > 0,
     hasConflict: meta.mergeable.toUpperCase() === 'CONFLICTING',
@@ -185,5 +196,7 @@ export async function gatherMergeSafetyFacts(
     baseCiCommits,
     overlappingFiles: overlaps,
     failingBaseChecks,
+    prBreakingDiffSignals: diffSignals,
+    prMayCarryBreakingMarker: mayCarryBreakingMarker(meta.title),
   };
 }
