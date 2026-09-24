@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: The check-run contract
-description: Why the check-run name `merge-safety` is a fleet contract wired into every consumer's required status checks and the auto-merge gate, and why renaming it is a coordinated fleet migration rather than a local edit.
+description: Why the check-run name `merge-safety` is a fleet contract wired into every consumer's required status checks and the auto-merge gate, why renaming it is a coordinated fleet migration rather than a local edit, and the three verdict states (success, pending, failure) consumers must tell apart.
 tags: [merge-safety, auto-merge, contract, check-run]
 ---
 
@@ -42,6 +42,38 @@ requires, quietly disabling the safety gate everywhere.
 So: the repository name is a free choice, but the **check-run name stays
 `merge-safety`**. Treat `MERGE_SAFETY_CHECK_NAME` as frozen; changing it is a
 deliberate cross-repo project, never a refactor.
+
+## Three verdict states
+
+The `merge-safety` check-run ends in one of three states:
+
+| State       | Check-run                    | Title                                                                                                     | When                                                                              |
+| ----------- | ---------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **success** | `completed` / `success`      | `No update required`                                                                                      | Safe to merge as-is.                                                              |
+| **pending** | `in_progress`, no conclusion | `Update required`                                                                                         | The PR is stale and nothing else is wrong. A branch update clears it.             |
+| **failure** | `completed` / `failure`      | `Merge conflict`, `Base PR not merged`, `Base CI failing`, `Retitle as a CI change`, `Could not evaluate` | Something a branch update alone cannot fix, including staleness combined with it. |
+
+A stale-only PR used to get a red ✗ `failure`
+([#58](https://github.com/rmartz/merge-safety/issues/58)). Being out of date is
+routine and automation clears it, so it now gets a yellow `in_progress` check
+instead. For a required check GitHub merges only on `success`, `neutral`, or
+`skipped`, so an incomplete check still blocks the merge and auto-merge waits on
+it, exactly as a failure would.
+
+**An incomplete `merge-safety` check does not always mean "still evaluating".**
+Two states share `in_progress`, and consumers tell them apart by the check-run
+**title**:
+
+- `Re-evaluating`: `invalidate` marked the PR pending after the base moved, and a
+  verdict is on its way.
+- `Update required`: the verdict is in, and it will not change until the PR's
+  branch is updated. Updating the branch creates a new head SHA, which gets a fresh
+  evaluation. Tooling that waits for CI must not wait on this state; the PR also
+  carries the `update required` label.
+
+GitHub marks a check-run that stays incomplete for 14 days as `stale`. That is
+harmless here: a stale check still blocks the merge, and updating the branch
+replaces it with a fresh evaluation.
 
 ## One run per head, completed in place
 

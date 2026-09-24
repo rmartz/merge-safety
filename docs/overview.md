@@ -76,7 +76,13 @@ gathers the safety **facts** for that one PR against its base:
   deploy) — so a genuinely broken base is still caught in a repo with no queryable
   ruleset, without reintroducing the #40 false positive.
 
-It then posts the `merge-safety` check-run with the verdict and **reconciles the
+It then posts the `merge-safety` check-run with the verdict. The verdict has three
+states: **success** (safe to merge as-is), **pending** (the PR's only problem is
+that it is stale, which a branch update clears), and **failure** (anything else).
+A pending verdict is posted as an incomplete check-run, so it blocks the merge
+without showing a red ✗; see
+[the check-run contract](check-run-contract.md#three-verdict-states). It also
+**reconciles the
 labels** that surface the reason to humans and to the coordinator — the
 update-required and merge-conflict labels — adding or removing each to match the
 current facts. (The base-health and stacked-base axes mint no
