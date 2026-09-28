@@ -2,9 +2,9 @@
 // Thin CLI over the merge-safety predicate. Two modes:
 //   evaluate  — gather facts for one PR, post its `merge-safety` check-run, and
 //               reconcile the `update required` / `merge conflict` labels.
-//   invalidate — (push-to-base fan-out) flip every OTHER open PR's check to
-//               pending and dispatch its own evaluate run, so a moved base holds
-//               auto-merge until each PR re-clears against the new base.
+//   invalidate — (push-to-base fan-out) flip every OTHER open PR based on the
+//               moved branch to pending and dispatch its own evaluate run, so a
+//               moved base holds auto-merge until each PR re-clears against it.
 // All judgment lives in the library; this only parses args and talks to `gh`.
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +50,12 @@ export interface Args {
    * than holding every PR.
    */
   defaultBranch?: string;
+  /**
+   * `invalidate` only: the branch that moved, whose open PRs are fanned out over.
+   * Any branch, not just the default — a push to a stacked parent's branch must
+   * invalidate its children (#54). Absent → the resolved default branch.
+   */
+  baseBranch?: string;
   /** Labels on a base PR that exempt its children from the barrier (#54). */
   exemptBaseLabels: readonly string[];
   /** Decision-only: print the verdict as JSON and perform no side effects. */
@@ -60,7 +66,8 @@ function usage(): never {
   console.error(
     'usage: ai-merge-safety evaluate --pr <n> [--json] [--repo <o/r>] [--base <ref>] [--cwd <path>]\n' +
       '                                 [--default-branch <name>] [--exempt-base-labels <csv>]\n' +
-      '       ai-merge-safety invalidate [--workflow <file>] [--exclude <n>] [--repo <o/r>] [--cwd <path>]',
+      '       ai-merge-safety invalidate [--base-branch <name>] [--workflow <file>] [--exclude <n>]\n' +
+      '                                   [--repo <o/r>] [--cwd <path>]',
   );
   process.exit(2);
 }
@@ -84,6 +91,7 @@ function parse(argv: string[]): Args {
     else if (a === '--workflow') args.workflow = argv[++i] ?? args.workflow;
     else if (a === '--cwd') args.cwd = argv[++i];
     else if (a === '--default-branch') args.defaultBranch = argv[++i];
+    else if (a === '--base-branch') args.baseBranch = argv[++i];
     else if (a === '--exempt-base-labels')
       args.exemptBaseLabels = (argv[++i] ?? '')
         .split(',')
@@ -217,8 +225,10 @@ export function makeBasePrProbe(repo: string, cwd?: string): BasePrProbe {
 }
 
 /**
- * The repository default branch, for the stacked barrier. Returns `null` when it
- * cannot be read, which disables the barrier rather than stranding every PR.
+ * The repository default branch — for the stacked barrier, and as the fan-out
+ * base when `invalidate` is not told which branch moved. Returns `null` when it
+ * cannot be read: the barrier is then disabled rather than stranding every PR, and
+ * `invalidate` refuses rather than guessing.
  */
 async function resolveDefaultBranch(
   repo: string,
@@ -355,6 +365,10 @@ function emitDecisionJson(decision: MergeSafetyDecision, isError: boolean): void
 }
 
 export async function runInvalidate(repo: string, args: Args): Promise<void> {
+  // Never assume `main`: a consumer whose default branch is named otherwise would
+  // match nothing and leave every PR holding a stale green check (#54).
+  const baseBranch = await resolveDefaultBranch(repo, args.baseBranch, args.cwd);
+  if (!baseBranch) throw new Error('could not resolve the base branch to fan out over');
   const prs = await ghJson<{ number: number; headRefOid: string }[]>(
     [
       'gh',
@@ -365,7 +379,7 @@ export async function runInvalidate(repo: string, args: Args): Promise<void> {
       '--state',
       'open',
       '--base',
-      'main',
+      baseBranch,
       '--limit',
       '1000',
       '--json',

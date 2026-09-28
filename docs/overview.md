@@ -103,9 +103,14 @@ rewrite a subject and holds the release-please exemption.)
 
 ## `invalidate` — the base moved (or its CI flipped)
 
-On a push to the base branch, `invalidate` fans out across **every other open
-PR**: it flips each one's `merge-safety` check back to pending and re-dispatches
-its `evaluate`. This is what makes a moved base hold native auto-merge until each
+On a push to a branch, `invalidate` fans out across **every other open PR based
+on that branch**: it flips each one's `merge-safety` check back to pending and
+re-dispatches its `evaluate`. The fan-out keys on the branch that was pushed (the
+CLI's `--base-branch`), not on a hard-coded `main`: a repo whose default branch is
+named otherwise is invalidated correctly, and a **stacked** child is re-evaluated
+when its parent PR's branch moves, rather than holding a stale green while its
+actual base advances underneath it. With no `--base-branch`, the CLI resolves the
+repository default branch, and refuses rather than guessing if it cannot. This is what makes a moved base hold native auto-merge until each
 PR has been re-checked against the new base, rather than letting a now-stale PR
 merge itself. The dispatched `evaluate` completes that same pending run in place
 with its verdict, rather than posting a second one beside it (see

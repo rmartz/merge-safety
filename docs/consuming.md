@@ -34,6 +34,17 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > with no open PR is never barred, so an integration branch without a tracking PR
 > needs no configuration.
 >
+> **Stacked children are only re-evaluated when their parent moves if the caller
+> triggers on that push.** `invalidate` fans out over the PRs based on whichever
+> branch was pushed, so a push to a stacked parent's branch re-holds its children —
+> but only for branches the caller's `push:` trigger subscribes to. The example
+> below subscribes to the default branch alone; if your repo stacks PRs, widen it
+> (e.g. `branches: ['**']`) so parent branches fan out too. The cost is one short
+> `invalidate` job per push to any branch, which finds no PRs and exits for a branch
+> nothing is based on. **Only widen it on a pin at or after the release that ships
+> this** — an older reusable workflow fans out over the default branch's PRs on
+> _every_ push, so a widened trigger there would needlessly re-hold them all.
+>
 > **The `hotfix` label is the base-health escape hatch.** When the base branch's
 > own CI is failing, `evaluate` fails the `merge-safety` check for every open PR
 > **except** one labelled **`hotfix`**, so the fix for broken main can still merge
@@ -129,8 +140,9 @@ Why each piece is there:
 
 - **The caller carries the triggers.** A reusable workflow can't declare its own
   `on:` triggers; the caller does and passes the event context in. Use
-  `pull_request_target` (see the callout above) plus `push` on the default branch,
-  the `check_suite` completion (below), and thread the `workflow_dispatch` input.
+  `pull_request_target` (see the callout above) plus `push` on the default branch
+  (or on every branch, for a repo that stacks PRs — see the callout above), the
+  `check_suite` completion (below), and thread the `workflow_dispatch` input.
   The `evaluate`-vs-`invalidate` branch and the label-narrowing logic live inside
   the [reusable workflow](../.github/workflows/merge-safety.yml), so the caller
   stays thin.

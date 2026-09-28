@@ -178,9 +178,13 @@ jobs:
     # completion both fan out over every open PR, so they share a single group and are
     # never cancelled — no base move may be dropped. Scoping the group to this job (and
     # not the workflow) is also what keeps a PR-event run from ever queueing behind a
-    # fan-out and being cancelled by the next PR event (#48).
+    # fan-out and being cancelled by the next PR event (#48). The group is keyed on the
+    # branch that moved (#54): fan-outs over the same base still serialize, but a push
+    # to one stacked parent can never supersede — and so cancel — a fan-out queued for
+    # a different base, which a single repo-wide group would do once the caller's
+    # push trigger covers more than the default branch.
     concurrency:
-      group: merge-safety-invalidate
+      group: merge-safety-invalidate-${{ github.event_name == 'push' && github.ref_name || github.event.check_suite.head_branch }}
       cancel-in-progress: false
     # Fan out on a push to the base OR when the base branch's own GitHub Actions CI
     # concludes (check_suite completed) — the latter re-holds already-cleared PRs
@@ -190,8 +194,16 @@ jobs:
     # default branch: one suite per base commit, not per external deploy integration.
     # No loop: this fan-out's own runs use GITHUB_TOKEN, whose activity GitHub does
     # not let trigger a further check_suite run.
+    #
+    # A push fans out over the PRs based on the branch that was PUSHED, not the
+    # default branch, so a stacked child is re-evaluated when its parent branch
+    # moves (#54). That only fires for the branches the caller's `push:` trigger
+    # subscribes to — widen it past the default branch to cover stacked parents
+    # (docs/consuming.md). Tag pushes and branch deletions move no PR's base.
     if: >-
-      github.event_name == 'push' ||
+      (github.event_name == 'push' &&
+       startsWith(github.ref, 'refs/heads/') &&
+       !github.event.deleted) ||
       (github.event_name == 'check_suite' &&
        github.event.check_suite.app.slug == 'github-actions' &&
        github.event.check_suite.head_branch == github.event.repository.default_branch)
@@ -200,6 +212,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       CALLER_WORKFLOW: ${{ inputs.caller-workflow }}
+      # The branch that moved: the pushed branch, or the default branch whose CI
+      # concluded (the check_suite filter above guarantees it is the default).
+      BASE_BRANCH: ${{ github.event_name == 'push' && github.ref_name || github.event.check_suite.head_branch }}
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -234,4 +249,6 @@ jobs:
         run: >-
           npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
           --@rmartz:registry=https://registry.npmjs.org/
-      - run: ai-merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"
+      - run: >-
+          ai-merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"
+          --base-branch "${BASE_BRANCH}"
