@@ -23,7 +23,11 @@ const statuses = () => calls().filter((c) => c.argv.some((a) => a.includes('/sta
  * Answer the open-run lookup with `lookup`; every write succeeds unless `failPatch`
  * names the run, or `failStatus` is set.
  */
-function respond(lookup: string | null, failPatch: readonly number[] = [], failStatus = false): void {
+function respond(
+  lookup: string | null,
+  failPatch: readonly number[] = [],
+  failStatus = false,
+): void {
   ghCall.mockImplementation(async (primary: Call) => {
     if (primary.argv.some((a) => a.includes('check_name='))) return lookup;
     if (failStatus && primary.argv.some((a) => a.includes('/statuses/'))) return null;
