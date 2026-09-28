@@ -32,10 +32,12 @@ triggers and runs with the intersection of granted and declared permissions:
 # .github/workflows/merge-safety.yml
 name: merge-safety
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
   push:
     branches: [main]
+  check_suite:
+    types: [completed]
   workflow_dispatch:
     inputs:
       pr:
@@ -43,6 +45,7 @@ on:
         required: true
 permissions:
   checks: write
+  statuses: write
   pull-requests: write
   contents: read
   actions: write

@@ -83,7 +83,10 @@ gathers the safety **facts** for that one PR against its base:
   deploy) — so a genuinely broken base is still caught in a repo with no queryable
   ruleset, without reintroducing the #40 false positive.
 
-It then posts the `merge-safety` check-run with the verdict. The verdict has three
+It then posts the `merge-safety` check-run with the verdict, and mirrors it to a
+`merge-safety` commit status, which is what the merge gate can rely on (see
+[the check-run contract](check-run-contract.md#the-commit-status-is-what-the-gate-relies-on)).
+The verdict has three
 states: **success** (safe to merge as-is), **pending** (the PR's only problem is
 that it is stale, which a branch update clears), and **failure** (anything else).
 A pending verdict is posted as an incomplete check-run, so it blocks the merge
