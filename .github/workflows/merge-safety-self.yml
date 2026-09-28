@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   merge-safety:
-    uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@74a4e7621bbfaf3b12f8bf015533e1ffc3475a2b # v0.3.0
+    uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@8f9568cb125d4995e76309874404cc3044c83811 # v0.6.0
     with:
       pr: ${{ inputs.pr }}
       caller-workflow: merge-safety-self.yml
