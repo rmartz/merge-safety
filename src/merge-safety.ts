@@ -11,11 +11,12 @@
  *
  * The rule (a PR **must be brought current** when it is not already current AND):
  *   1. a **breaking** commit landed on the base since the PR's merge-base, OR
- *   2. a **`ci`-typed** commit landed on the base since merge-base (the
- *      coordinator rebases in-flight PRs past CI changes — see the `ci` prefix
- *      rebase rule), OR
+ *   2. a **CI** commit landed on the base since merge-base — `ci`-typed, or one
+ *      that changed `.github/workflows/**` / `.github/actions/**` (#67) — (the
+ *      coordinator rebases in-flight PRs past CI changes, by prefix or path), OR
  *   3. the PR is **itself** a breaking change, OR
- *   4. the PR is **itself** a `ci`-typed change **and is not a hotfix** — a CI
+ *   4. the PR is **itself** a CI change (`ci`-typed, or its diff touches those
+ *      paths) **and is not a hotfix** — a CI
  *      guard is only as good as the base it last ran against, so a CI PR that was
  *      clean when it was opened must be re-tested against the current base to
  *      catch a pattern the guard protects against that has regressed on the base
@@ -150,11 +151,14 @@ export interface MergeSafetyFacts {
   isCurrent: boolean;
   /** A breaking commit landed on the base since the PR's merge-base. */
   baseBreakingSinceMergeBase: boolean;
-  /** A `ci`-typed commit landed on the base since the PR's merge-base. */
+  /** A CI commit (`ci`-typed, or touching a CI path) landed on the base since merge-base. */
   baseCiSinceMergeBase: boolean;
   /** The PR is itself a breaking change (title `!` marker or `breaking change` label). */
   prIsBreaking: boolean;
-  /** The PR is itself a `ci`-typed change (title `ci:` / `ci(scope):`). */
+  /**
+   * The PR is itself a CI change: title `ci:` / `ci(scope):`, or its own diff
+   * changes `.github/workflows/**` / `.github/actions/**` (#67).
+   */
   prIsCi: boolean;
   /** The PR's changed files intersect the base's changed files since merge-base. */
   fileOverlap: boolean;
@@ -171,7 +175,7 @@ export interface MergeSafetyFacts {
   prIsHotfix: boolean;
   /** The base commits since merge-base whose message marks a breaking change. */
   baseBreakingCommits: readonly BaseCommit[];
-  /** The `ci`-typed base commits since merge-base. */
+  /** The CI base commits (`ci`-typed, or touching a CI path) since merge-base. */
   baseCiCommits: readonly BaseCommit[];
   /** The PR's changed files that also changed on the base since merge-base. */
   overlappingFiles: readonly string[];
