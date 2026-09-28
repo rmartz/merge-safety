@@ -228,7 +228,9 @@ describe('runEvaluate', () => {
 describe('runInvalidate', () => {
   it('throws when the open-PR list cannot be read', async () => {
     ghCall.mockResolvedValue(null);
-    await expect(runInvalidate(REPO, invalidateArgs())).rejects.toThrow(/could not list open PRs/);
+    await expect(runInvalidate(REPO, invalidateArgs({ baseBranch: 'main' }))).rejects.toThrow(
+      /could not list open PRs/,
+    );
   });
 
   it('skips the excluded PR and, for each other, flips to pending then dispatches the caller workflow', async () => {
@@ -241,7 +243,10 @@ describe('runInvalidate', () => {
       }
       return '';
     });
-    await runInvalidate(REPO, invalidateArgs({ exclude: 1, workflow: 'custom-caller.yml' }));
+    await runInvalidate(
+      REPO,
+      invalidateArgs({ baseBranch: 'main', exclude: 1, workflow: 'custom-caller.yml' }),
+    );
 
     const checkPosts = ghCall.mock.calls.filter(([p]) => isCheckPost(p.argv as string[]));
     const dispatches = ghCall.mock.calls.filter(([p]) => (p.argv as string[]).includes('workflow'));
@@ -257,6 +262,46 @@ describe('runInvalidate', () => {
     expect(dispatchArgv).toContain('custom-caller.yml');
     expect(dispatchArgv).toContain('pr=2');
     expect(dispatchArgv).not.toContain('pr=1');
+  });
+
+  /** The `--base` value the open-PR list was filtered on. */
+  const listedBase = (): string | undefined => {
+    const list = ghCall.mock.calls.find(([p]) => (p.argv as string[]).includes('list'));
+    const argv = list?.[0].argv as string[] | undefined;
+    return argv?.[argv.indexOf('--base') + 1];
+  };
+
+  it('fans out over the PRs based on the pushed branch, so a stacked child is invalidated', async () => {
+    ghCall.mockImplementation(async (primary: { argv: string[] }) =>
+      primary.argv.includes('list') ? JSON.stringify([{ number: 3, headRefOid: 'sha3' }]) : '',
+    );
+    await runInvalidate(REPO, invalidateArgs({ baseBranch: 'issue-53-parent' }));
+
+    expect(listedBase()).toBe('issue-53-parent');
+    // No default-branch lookup is needed when the pushed branch is named.
+    expect(ghCall.mock.calls.some(([p]) => (p.argv as string[]).includes('repo'))).toBe(false);
+    const dispatches = ghCall.mock.calls.filter(([p]) => (p.argv as string[]).includes('workflow'));
+    expect(dispatches[0]![0].argv).toContain('pr=3');
+  });
+
+  it('resolves a non-`main` default branch rather than assuming `main`', async () => {
+    ghCall.mockImplementation(async (primary: { argv: string[] }) => {
+      if (primary.argv.includes('repo'))
+        return JSON.stringify({ defaultBranchRef: { name: 'trunk' } });
+      if (primary.argv.includes('list')) return JSON.stringify([{ number: 4, headRefOid: 'sha4' }]);
+      return '';
+    });
+    await runInvalidate(REPO, invalidateArgs());
+
+    expect(listedBase()).toBe('trunk');
+    const dispatches = ghCall.mock.calls.filter(([p]) => (p.argv as string[]).includes('workflow'));
+    expect(dispatches[0]![0].argv).toContain('pr=4');
+  });
+
+  it('throws rather than guessing `main` when no base branch is given and the default is unreadable', async () => {
+    ghCall.mockResolvedValue(null);
+    await expect(runInvalidate(REPO, invalidateArgs())).rejects.toThrow(/base branch/);
+    expect(ghCall.mock.calls.some(([p]) => (p.argv as string[]).includes('list'))).toBe(false);
   });
 });
 
