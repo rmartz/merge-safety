@@ -57,8 +57,8 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > of failure, without consulting these docs. (Even so, `hotfix` should exist so
 > that override is actually applicable.)
 >
-> **`hotfix` also exempts a `ci`-typed PR from being forced current.** A `ci`-typed
-> PR is normally held until it is current with its base (so a CI guard is re-tested
+> **`hotfix` also exempts a CI PR from being forced current.** A CI PR — `ci`-typed,
+> or one whose diff changes `.github/workflows/**` / `.github/actions/**` — is normally held until it is current with its base (so a CI guard is re-tested
 > against the latest base). That guard is unconditional — except for a `hotfix`,
 > which frees it: a CI fix for a base whose own CI is red would otherwise be caught
 > in a bind, since being forced current may be impossible or pointless while the

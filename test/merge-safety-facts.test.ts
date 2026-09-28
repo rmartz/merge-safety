@@ -37,6 +37,7 @@ function cleanStaleGit(): GitRunner {
     'merge-base HEAD1 origin/main': 'BASE',
     'rev-parse origin/main': 'TIP',
     'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
+    'log --format=%x00%H --name-only BASE..origin/main': '',
     'diff --name-only BASE origin/main': 'src/a.ts',
     'diff --name-only BASE HEAD1': 'src/b.ts',
     'diff --unified=0 BASE HEAD1': '',
@@ -50,6 +51,7 @@ describe('gatherMergeSafetyFacts', () => {
       'rev-parse origin/main': 'TIP', // != BASE → stale
       'log -z --format=%H%n%B BASE..origin/main':
         'sha-break\nfeat(api)!: rename field\0sha-ci\nci: add job',
+      'log --format=%x00%H --name-only BASE..origin/main': '',
       'diff --name-only BASE origin/main': 'src/a.ts\nsrc/shared.ts',
       'diff --name-only BASE HEAD1': 'src/shared.ts\nsrc/b.ts',
       'diff --unified=0 BASE HEAD1': '',
@@ -81,6 +83,7 @@ describe('gatherMergeSafetyFacts', () => {
       'rev-parse origin/main': 'TIP',
       'log -z --format=%H%n%B BASE..origin/main':
         'sha-foot\nfeat: add flag\n\nBREAKING CHANGE: config renamed',
+      'log --format=%x00%H --name-only BASE..origin/main': '',
       'diff --name-only BASE origin/main': 'src/a.ts',
       'diff --name-only BASE HEAD1': 'src/b.ts',
       'diff --unified=0 BASE HEAD1': '',
@@ -101,6 +104,7 @@ describe('gatherMergeSafetyFacts', () => {
       'merge-base HEAD1 origin/main': 'TIP',
       'rev-parse origin/main': 'TIP',
       'log -z --format=%H%n%B TIP..origin/main': '',
+      'log --format=%x00%H --name-only TIP..origin/main': '',
       'diff --name-only TIP origin/main': '',
       'diff --name-only TIP HEAD1': 'src/b.ts',
       'diff --unified=0 TIP HEAD1': '',
@@ -142,6 +146,25 @@ describe('gatherMergeSafetyFacts', () => {
       requiredChecks: fakeRequired(),
     });
     expect(feat.prIsCi).toBe(false);
+  });
+
+  it('throws when the per-commit file log returns null — never silently produces false success', async () => {
+    const git = fakeGit({
+      'merge-base HEAD1 origin/main': 'BASE',
+      'rev-parse origin/main': 'TIP',
+      'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
+      // `log --name-only` key absent → null
+      'diff --name-only BASE origin/main': 'src/a.ts',
+      'diff --name-only BASE HEAD1': 'src/b.ts',
+      'diff --unified=0 BASE HEAD1': '',
+    });
+    await expect(
+      gatherMergeSafetyFacts(meta, {
+        git,
+        baseChecks: fakeChecks(),
+        requiredChecks: fakeRequired(),
+      }),
+    ).rejects.toThrow(/git log failed/);
   });
 
   it('flags base CI failing from a failing required base check, probing the base tip + branch', async () => {
@@ -249,6 +272,7 @@ describe('gatherMergeSafetyFacts', () => {
       'merge-base HEAD1 origin/main': 'BASE',
       'rev-parse origin/main': 'TIP',
       'log -z --format=%H%n%B BASE..origin/main': 'sha1\nfeat!: breaking',
+      'log --format=%x00%H --name-only BASE..origin/main': '',
       // diff keys absent → null
     });
     await expect(
@@ -276,6 +300,7 @@ describe('gatherMergeSafetyFacts — the diff-derived breaking signals (#53)', (
       'merge-base HEAD1 origin/main': 'BASE',
       'rev-parse origin/main': 'TIP',
       'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
+      'log --format=%x00%H --name-only BASE..origin/main': '',
       'diff --name-only BASE origin/main': 'src/a.ts',
       'diff --name-only BASE HEAD1': 'package.json',
       'diff --unified=0 BASE HEAD1': prDiff,
@@ -345,6 +370,7 @@ describe('gatherMergeSafetyFacts — the diff-derived breaking signals (#53)', (
       'merge-base HEAD1 origin/main': 'BASE',
       'rev-parse origin/main': 'TIP',
       'log -z --format=%H%n%B BASE..origin/main': 'sha-fix\nfix: small',
+      'log --format=%x00%H --name-only BASE..origin/main': '',
       'diff --name-only BASE origin/main': 'src/a.ts',
       'diff --name-only BASE HEAD1': 'src/b.ts',
       // no `diff --unified=0` key → the runner yields null
@@ -367,6 +393,7 @@ describe('gatherMergeSafetyFacts — the stacked-base barrier (#54)', () => {
       [`merge-base HEAD1 ${baseRef}`]: 'TIP',
       [`rev-parse ${baseRef}`]: 'TIP',
       [`log -z --format=%H%n%B TIP..${baseRef}`]: '',
+      [`log --format=%x00%H --name-only TIP..${baseRef}`]: '',
       [`diff --name-only TIP ${baseRef}`]: '',
       'diff --name-only TIP HEAD1': 'src/b.ts',
       'diff --unified=0 TIP HEAD1': '',
@@ -443,5 +470,91 @@ describe('gatherMergeSafetyFacts — the stacked-base barrier (#54)', () => {
     });
 
     expect(facts.stackedOnPr).toBeNull();
+  });
+});
+
+describe('gatherMergeSafetyFacts — the path-based CI signal (#67)', () => {
+  /** A stale-PR git fake with the given base messages, base per-commit files, and PR files. */
+  function gitWith(opts: { log: string; baseFileLog: string; prFiles: string }): GitRunner {
+    return fakeGit({
+      'merge-base HEAD1 origin/main': 'BASE',
+      'rev-parse origin/main': 'TIP',
+      'log -z --format=%H%n%B BASE..origin/main': opts.log,
+      'log --format=%x00%H --name-only BASE..origin/main': opts.baseFileLog,
+      'diff --name-only BASE origin/main': 'src/a.ts\n.github/workflows/ci.yml',
+      'diff --name-only BASE HEAD1': opts.prFiles,
+      'diff --unified=0 BASE HEAD1': '',
+    });
+  }
+
+  const probes = { baseChecks: fakeChecks(), requiredChecks: fakeRequired() };
+
+  it('counts a merged feat/perf commit that changed .github/workflows or .github/actions as a CI commit', async () => {
+    const facts = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWith({
+        log: 'sha-feat\nfeat: ship a workflow input\0sha-perf\nperf: cache action\0sha-fix\nfix: small',
+        baseFileLog:
+          '\0sha-feat\n\n.github/workflows/ci.yml\nsrc/a.ts\n' +
+          '\0sha-perf\n\n.github/actions/setup/action.yml\n' +
+          '\0sha-fix\n\nsrc/a.ts\n',
+        prFiles: 'src/b.ts',
+      }),
+    });
+
+    expect(facts.baseCiSinceMergeBase).toBe(true);
+    expect(facts.baseCiCommits).toEqual([
+      { sha: 'sha-feat', subject: 'feat: ship a workflow input' },
+      { sha: 'sha-perf', subject: 'perf: cache action' },
+    ]);
+  });
+
+  it('does not count a commit touching a lookalike path outside .github/workflows or .github/actions', async () => {
+    const facts = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWith({
+        log: 'sha-doc\ndocs: describe workflows',
+        baseFileLog: '\0sha-doc\n\ndocs/.github/workflows/x.yml\n.github/dependabot.yml\n',
+        prFiles: 'src/b.ts',
+      }),
+    });
+
+    expect(facts.baseCiSinceMergeBase).toBe(false);
+    expect(facts.baseCiCommits).toEqual([]);
+  });
+
+  it('flags prIsCi when the PR diff itself changes a workflow or local action', async () => {
+    const workflow = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWith({
+        log: '',
+        baseFileLog: '',
+        prFiles: 'src/b.ts\n.github/workflows/merge-safety.yml',
+      }),
+    });
+    expect(workflow.prIsCi).toBe(true);
+
+    const action = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWith({ log: '', baseFileLog: '', prFiles: '.github/actions/setup/action.yml' }),
+    });
+    expect(action.prIsCi).toBe(true);
+  });
+
+  it('keeps the title-based signals unchanged alongside the paths', async () => {
+    const facts = await gatherMergeSafetyFacts(
+      { ...meta, title: 'ci: add job' },
+      {
+        ...probes,
+        git: gitWith({
+          log: 'sha-ci\nci: add job',
+          baseFileLog: '\0sha-ci\n\nscripts/check.sh\n',
+          prFiles: 'src/b.ts',
+        }),
+      },
+    );
+
+    expect(facts.prIsCi).toBe(true);
+    expect(facts.baseCiCommits).toEqual([{ sha: 'sha-ci', subject: 'ci: add job' }]);
   });
 });
