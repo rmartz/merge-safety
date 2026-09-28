@@ -1,13 +1,15 @@
 ---
 type: Reference
 title: The check-run contract
-description: Why the check-run name `merge-safety` is a fleet contract wired into every consumer's required status checks and the auto-merge gate, why renaming it is a coordinated fleet migration rather than a local edit, and the three verdict states (success, pending, failure) consumers must tell apart.
-tags: [merge-safety, auto-merge, contract, check-run]
+description: Why the name `merge-safety` is a fleet contract wired into every consumer's required status checks and the auto-merge gate, why renaming it is a coordinated fleet migration rather than a local edit, why the verdict is posted as both a check-run and a commit status, and the three verdict states (success, pending, failure) consumers must tell apart.
+tags: [merge-safety, auto-merge, contract, check-run, commit-status]
 ---
 
 # The check-run contract
 
-merge-safety posts a check-run named literally **`merge-safety`**. That name is
+merge-safety posts its verdict under the name **`merge-safety`**, as both a
+check-run and a commit status with that context (see
+[below](#the-commit-status-is-what-the-gate-relies-on)). That name is
 not a private implementation detail or a cosmetic label — it is a **fleet
 contract** that three separate things depend on by string:
 
@@ -47,11 +49,14 @@ deliberate cross-repo project, never a refactor.
 
 The `merge-safety` check-run ends in one of three states:
 
-| State       | Check-run                    | Title                                                                                                     | When                                                                              |
-| ----------- | ---------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **success** | `completed` / `success`      | `No update required`                                                                                      | Safe to merge as-is.                                                              |
-| **pending** | `in_progress`, no conclusion | `Update required`                                                                                         | The PR is stale and nothing else is wrong. A branch update clears it.             |
-| **failure** | `completed` / `failure`      | `Merge conflict`, `Base PR not merged`, `Base CI failing`, `Retitle as a CI change`, `Could not evaluate` | Something a branch update alone cannot fix, including staleness combined with it. |
+| State       | Check-run                    | Commit status | Title                                                                                                     | When                                                                              |
+| ----------- | ---------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **success** | `completed` / `success`      | `success`     | `No update required`                                                                                      | Safe to merge as-is.                                                              |
+| **pending** | `in_progress`, no conclusion | `pending`     | `Update required`                                                                                         | The PR is stale and nothing else is wrong. A branch update clears it.             |
+| **failure** | `completed` / `failure`      | `failure`     | `Merge conflict`, `Base PR not merged`, `Base CI failing`, `Retitle as a CI change`, `Could not evaluate` | Something a branch update alone cannot fix, including staleness combined with it. |
+
+The commit status carries the title as its description, cut to GitHub's
+140-character limit.
 
 A stale-only PR used to get a red ✗ `failure`
 ([#58](https://github.com/rmartz/merge-safety/issues/58)). Being out of date is
@@ -61,8 +66,8 @@ instead. For a required check GitHub merges only on `success`, `neutral`, or
 it, exactly as a failure would.
 
 **An incomplete `merge-safety` check does not always mean "still evaluating".**
-Two states share `in_progress`, and consumers tell them apart by the check-run
-**title**:
+Two states share `in_progress` (status `pending`), and consumers tell them apart
+by the check-run **title**, which is also the commit status's description:
 
 - `Re-evaluating`: `invalidate` marked the PR pending after the base moved, and a
   verdict is on its way.
@@ -74,6 +79,34 @@ Two states share `in_progress`, and consumers tell them apart by the check-run
 GitHub marks a check-run that stays incomplete for 14 days as `stale`. That is
 harmless here: a stale check still blocks the merge, and updating the branch
 replaces it with a fresh evaluation.
+
+## The commit status is what the gate relies on
+
+Every post sets the check-run **and** a commit status with the context
+`merge-safety`, both carrying the same verdict. The status exists because the
+check-run alone could leave a PR `BLOCKED` while every check showed green
+([#73](https://github.com/rmartz/merge-safety/issues/73)):
+
+- A check-run created with `GITHUB_TOKEN` doesn't get a check suite of its own.
+  GitHub files it into the **oldest `github-actions` suite** on the head SHA, which
+  is usually some other workflow's suite, such as `bot-automerge` or `pr-policy`.
+- When a **newer run of that same workflow and event** lands on the same SHA (a
+  `pull_request_target` workflow fires on opened, labeled, edited, and so on),
+  GitHub treats the older suite as superseded. **The merge gate ignores every
+  check-run in a superseded suite.**
+- The REST checks list and GraphQL's `isRequired` rollup still show the ignored run
+  as `SUCCESS`, so nothing looks wrong except the `BLOCKED` merge state. Re-running
+  merge-safety does not help, because the new run lands in the same old suite.
+
+A commit status belongs to no suite, so no workflow run can supersede it. When the
+check-run is in a live suite it agrees with the status, and when it is in a
+superseded one the gate ignores it and the status decides. The check-run is kept for
+the tooling that reads it by name, such as the auto-merge gate.
+
+Setting the status needs `statuses: write` (see
+[Setting up merge-safety](consuming.md)). If the token lacks it, the check-run still
+posts and the run logs a warning, but the PR stays exposed to the superseded-suite
+block.
 
 ## One run per head, completed in place
 
@@ -102,15 +135,16 @@ A few details:
   `in_progress` and keeps blocking the merge, which is the fail-safe outcome. The
   next evaluation of that head, from any PR event, completes it.
 
-## Only the named check-run gates — sibling entries do not
+## Only the named context gates — sibling entries do not
 
 Because the gate matches by the single name `merge-safety`, **nothing else on the
 checks list gates the merge**. A single PR action can fire several PR events at once
 (a Dependabot open emits `opened` + `labeled` + `edited` within ~1s), so a burst can
-leave more than one `merge-safety` run on the list. Only the named `merge-safety`
-check-run is a required context, and GitHub gates on the latest run posted under that
-name; a green `merge-safety` check-run is the verdict, whatever sibling entries sit
-beside it — see
+leave more than one `merge-safety` run on the list. Only the `merge-safety` context
+is required, and GitHub gates on the latest value posted under that name. The
+`merge-safety` verdict holds whatever sibling entries sit beside it, except that a
+check-run in a superseded suite is ignored, which is why the commit status
+[exists](#the-commit-status-is-what-the-gate-relies-on). See
 [Setting up merge-safety in a consuming repo](consuming.md#3-require-the-check).
 
 Those siblings used to be **cancelled** runs, because the reusable workflow declared a

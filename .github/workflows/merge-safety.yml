@@ -74,6 +74,10 @@ on:
 
 permissions:
   checks: write # post/flip the merge-safety check-run
+  # Mirror the verdict to the merge-safety commit status: the gate can ignore a
+  # GITHUB_TOKEN check-run filed into a superseded suite, never a status (#73).
+  # The caller must grant this too, or the workflow fails to start.
+  statuses: write
   pull-requests: write # reconcile update-required / merge-conflict labels
   contents: read
   actions: write # dispatch per-PR evaluate runs on the push fan-out

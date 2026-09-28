@@ -8,6 +8,16 @@
  * list, one more per open PR per base move. So every post first completes the
  * head's still-open `merge-safety` runs **in place**, and only creates a run when
  * there is none to update.
+ *
+ * Every post also sets a **commit status** of the same `merge-safety` context (#73),
+ * and that status is what the merge gate can rely on. A check-run created with
+ * `GITHUB_TOKEN` gets no suite of its own: GitHub files it into the head SHA's
+ * oldest `github-actions` check suite, typically some other `pull_request_target`
+ * workflow. Once a newer run of that workflow lands on the same SHA, GitHub treats
+ * the older suite as superseded and the merge gate ignores every check-run in it,
+ * while the checks list still shows it green. The PR sits `BLOCKED` on a "passing"
+ * check. A commit status belongs to no suite, so nothing can supersede it. The
+ * check-run is kept, with the identical verdict, for tooling that reads it by name.
  */
 import { MERGE_SAFETY_CHECK_NAME } from '../index.js';
 import { ghCall } from './github.js';
@@ -56,13 +66,69 @@ async function openCheckRunIds(
     .filter((id) => Number.isInteger(id) && id > 0);
 }
 
+/** GitHub rejects a commit-status description longer than this. */
+const STATUS_DESCRIPTION_MAX = 140;
+
+/**
+ * Set the `merge-safety` commit status on `headSha` to mirror the verdict (#73).
+ * `pending` maps to the status `pending` state, which blocks the merge exactly like
+ * the incomplete check-run, and the title (`Re-evaluating` / `Update required`)
+ * rides in the description. When the Actions run URL is known, it becomes the
+ * status's details link. A failure is only warned about: the caller may not grant
+ * `statuses: write` yet, and the check-run is still posted either way.
+ */
+async function postStatus(
+  repo: string,
+  headSha: string,
+  output: CheckOutput,
+  conclusion: CheckConclusion,
+  cwd?: string,
+): Promise<void> {
+  const { GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_RUN_ID } = process.env;
+  const runUrl =
+    GITHUB_SERVER_URL && GITHUB_REPOSITORY && GITHUB_RUN_ID
+      ? `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}`
+      : undefined;
+  const out = await ghCall(
+    {
+      argv: ['gh', 'api', '-X', 'POST', `repos/${repo}/statuses/${headSha}`, '--input', '-'],
+      stdin: JSON.stringify({
+        state: conclusion,
+        context: MERGE_SAFETY_CHECK_NAME,
+        description: output.title.slice(0, STATUS_DESCRIPTION_MAX),
+        ...(runUrl ? { target_url: runUrl } : {}),
+      }),
+    },
+    null,
+    { cwd },
+  );
+  if (out === null) {
+    console.warn(
+      `::warning::could not set the ${MERGE_SAFETY_CHECK_NAME} commit status on ${headSha} ` +
+        '— does the caller workflow grant `statuses: write`? (rmartz/merge-safety#73)',
+    );
+  }
+}
+
 /**
  * Post the `merge-safety` verdict (or a pending mark) on `headSha`: update every
  * still-open `merge-safety` run on it in place, or create one when none updates.
  * A failed lookup falls back to creating — the pre-#61 behavior — so an unreadable
- * checks list never costs the PR its verdict.
+ * checks list never costs the PR its verdict. The same verdict is then mirrored to
+ * the `merge-safety` commit status (#73).
  */
 export async function postCheck(
+  repo: string,
+  headSha: string,
+  output: CheckOutput,
+  conclusion: CheckConclusion,
+  cwd?: string,
+): Promise<void> {
+  await postCheckRun(repo, headSha, output, conclusion, cwd);
+  await postStatus(repo, headSha, output, conclusion, cwd);
+}
+
+async function postCheckRun(
   repo: string,
   headSha: string,
   output: CheckOutput,

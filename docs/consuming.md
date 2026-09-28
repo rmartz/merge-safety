@@ -91,6 +91,7 @@ on:
         required: true
 permissions:
   checks: write # post/flip the merge-safety check-run
+  statuses: write # set the merge-safety commit status the merge gate relies on
   pull-requests: write # reconcile update-required / merge-conflict labels
   contents: read
   actions: write # dispatch per-PR evaluate runs on the push fan-out
@@ -177,7 +178,12 @@ Why each piece is there:
 
 - **Write scopes, not read-only.** Effective permissions are the intersection of
   caller-granted and workflow-declared, so the caller must grant the full
-  `checks` / `pull-requests` / `actions: write` set.
+  `checks` / `statuses` / `pull-requests` / `actions: write` set. **Add
+  `statuses: write` before taking a pin that requests it.** The reusable workflow
+  declares it, and GitHub refuses to start a reusable workflow that asks for a
+  permission its caller doesn't grant. Without it, the Dependabot bump's own
+  `merge-safety` run fails to start. The status is what makes the verdict reliable;
+  see [the check-run contract](check-run-contract.md#the-commit-status-is-what-the-gate-relies-on).
 - **`workflow_dispatch` `pr` threading** — the `invalidate` fan-out re-dispatches
   each PR via `workflow_dispatch`, and the `pr` input passes through `with:`. The
   re-dispatch targets the caller file named by the `caller-workflow` input, which
@@ -246,9 +252,9 @@ and you can remove it once Dependabot has moved your pin past v0.6.0.
 > `evaluate` is idempotent — it reads the PR's title, labels, mergeable state, head
 > SHA and the base's checks live from the API at run time rather than from the event
 > payload, so concurrent runs for one PR compute the _same_ verdict and post the same
-> check-run. GitHub gates on the latest run posted under the name, so ordering does
-> not change the outcome. **Only the single check-run named `merge-safety` gates the
-> merge** (see [the check-run contract](check-run-contract.md)).
+> check-run and commit status. GitHub gates on the latest value posted under the
+> name, so ordering does not change the outcome. **Only the `merge-safety` context
+> gates the merge** (see [the check-run contract](check-run-contract.md)).
 >
 > **If you adopted merge-safety before v0.3.1 you may remember red ✗ "cancelled"
 > entries here** — often under the misleading name
