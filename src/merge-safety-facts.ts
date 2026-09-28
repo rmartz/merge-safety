@@ -139,13 +139,42 @@ function parseBaseCommits(logOut: string): { sha: string; message: string }[] {
     });
 }
 
+/**
+ * Paths whose change is a CI change regardless of the commit/PR title (#67): the
+ * workflows and local composite actions. Mirrors the coordinator's path-based
+ * `_pr_needs_branch_update` trigger (rmartz/dotfiles#1581), which lets a
+ * release-typed PR change CI without a `ci` prefix. A shipped `workflow_call`
+ * workflow is deliberately included — an extra sibling rebase after one merges is
+ * unnecessary but harmless, and it avoids parsing triggers.
+ */
+const CI_PATH_RE = /^\.github\/(?:workflows|actions)\//;
+
+/** True when a repo-relative path is a workflow or local action. */
+export function isCiPath(path: string): boolean {
+  return CI_PATH_RE.test(path);
+}
+
+/**
+ * Parse `git log --format=%x00%H --name-only` into the SHAs of commits that
+ * changed a CI path. Each NUL-led record is the SHA line followed by that
+ * commit's changed files.
+ */
+function parseCiPathShas(logOut: string): Set<string> {
+  const shas = new Set<string>();
+  for (const record of logOut.split('\0')) {
+    const [sha, ...files] = splitLines(record);
+    if (sha && files.some(isCiPath)) shas.add(sha);
+  }
+  return shas;
+}
+
 /** Base commits matching `predicate`, projected to the surfaced `{ sha, subject }` shape. */
 function selectCommits(
   commits: readonly { sha: string; message: string }[],
-  predicate: (message: string) => boolean,
+  predicate: (commit: { sha: string; message: string }) => boolean,
 ): BaseCommit[] {
   return commits
-    .filter((c) => predicate(c.message))
+    .filter(predicate)
     .map((c) => ({ sha: c.sha, subject: c.message.split('\n', 1)[0] ?? '' }));
 }
 
@@ -194,8 +223,22 @@ export async function gatherMergeSafetyFacts(
   const logOut = await git(['log', '-z', '--format=%H%n%B', `${mergeBase}..${baseRef}`]);
   if (logOut === null) throw new Error(`git log failed for ${mergeBase}..${baseRef}`);
   const commits = parseBaseCommits(logOut);
-  const baseBreakingCommits = selectCommits(commits, isBreakingCommitMessage);
-  const baseCiCommits = selectCommits(commits, isCiCommitMessage);
+  const baseBreakingCommits = selectCommits(commits, (c) => isBreakingCommitMessage(c.message));
+
+  // A base commit is a CI change by its `ci` prefix *or* by touching a CI path
+  // (#67), so a release-typed commit that changed a workflow still re-tests siblings.
+  const fileLogOut = await git([
+    'log',
+    '--format=%x00%H',
+    '--name-only',
+    `${mergeBase}..${baseRef}`,
+  ]);
+  if (fileLogOut === null) throw new Error(`git log failed for ${mergeBase}..${baseRef}`);
+  const ciPathShas = parseCiPathShas(fileLogOut);
+  const baseCiCommits = selectCommits(
+    commits,
+    (c) => isCiCommitMessage(c.message) || ciPathShas.has(c.sha),
+  );
 
   const baseFilesOut = await git(['diff', '--name-only', mergeBase, baseRef]);
   if (baseFilesOut === null) throw new Error(`git diff failed for ${mergeBase}..${baseRef}`);
@@ -235,7 +278,8 @@ export async function gatherMergeSafetyFacts(
     // the diff can only ever add a reason to treat the PR as breaking (#53).
     prIsBreaking:
       isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL) || diffSignals.length > 0,
-    prIsCi: isCiTitle(meta.title),
+    // Title or path (#67): a release-typed PR that changes CI is still re-tested.
+    prIsCi: isCiTitle(meta.title) || prFiles.some(isCiPath),
     fileOverlap: overlaps.length > 0,
     hasConflict: meta.mergeable.toUpperCase() === 'CONFLICTING',
     baseCiFailing: failingBaseChecks.length > 0,

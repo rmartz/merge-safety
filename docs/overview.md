@@ -23,7 +23,13 @@ gathers the safety **facts** for that one PR against its base:
 
 - **Base currency** — is the PR's branch behind its base in a way that matters?
 - **Breaking change** — did something merge into the base that this PR must be
-  re-tested against (a breaking-change signal or a real file overlap)?
+  re-tested against (a breaking-change signal, a CI change, or a real file
+  overlap)? A merged base commit is a **CI change** when its subject has the `ci`
+  prefix **or** it changed `.github/workflows/**` or `.github/actions/**` — the
+  path form mirrors the coordinator's rebase trigger, since a release-typed
+  (`feat`/`fix`/`perf`) PR may now change CI without a `ci` prefix. A shipped
+  `workflow_call` workflow counts too: the extra rebase after one merges is
+  unnecessary but harmless, and it avoids parsing triggers.
 - **Breaking change, PR-side — self-derived** — is _this PR_ a breaking change?
   The PR title's `!` marker and a `breaking change` label are still read, but the
   verdict no longer depends on them: it also reads the PR's **own diff** for a
@@ -44,8 +50,9 @@ gathers the safety **facts** for that one PR against its base:
   rather than applying a label that would be removed at merge. Unlike the staleness
   clauses this applies even to an already-current PR: merging under the wrong title
   loses the signal just as permanently.
-- **CI-typed PR** — is the PR's own title a `ci:`/`ci(scope):` conventional
-  commit? A CI change is only as good as the base it last ran against, so a
+- **CI PR** — is the PR's own title a `ci:`/`ci(scope):` conventional commit,
+  **or** does its own diff change `.github/workflows/**` or `.github/actions/**`?
+  A CI change is only as good as the base it last ran against, so a
   stale CI PR is forced current before merge, symmetric to the `prIsBreaking`
   clause — **unless it is a `hotfix`**, which exempts this clause so a CI fix for
   a base whose own CI is red is not caught in a bind (the same escape hatch as
