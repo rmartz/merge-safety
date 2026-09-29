@@ -9,7 +9,8 @@ name: Release
 # npm auth is OIDC trusted publishing: npmjs trusts THIS workflow file
 # (`release.yml`) in rmartz/merge-safety, so there is no NPM_TOKEN secret. Renaming
 # this file breaks publishing until the trusted publisher on npmjs is updated to
-# match. Provenance attestations are generated automatically. Versions up to 0.6.0
+# match. Provenance attestations are generated automatically. OIDC publishing needs
+# npm >= 11.5.1, which the setup action gets by installing Node 24. Versions up to 0.6.0
 # were published to GitHub Packages and stay there, so reusable-workflow pins at
 # those tags keep installing from GitHub Packages; later tags install from npmjs.
 #
