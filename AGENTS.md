@@ -152,20 +152,28 @@ Most are enforced by eslint; the intent:
   [pr-title-lint.yml](.github/workflows/pr-title-lint.yml) (pre-merge title format),
   [commit-convention.yml](.github/workflows/commit-convention.yml) (post-merge
   tripwire — a non-conventional subject reaching `main` makes semantic-release
-  silently skip), and the `Release notes render` job in [ci.yml](.github/workflows/ci.yml)
-  (pre-merge — drives the real `@semantic-release/release-notes-generator` render path
-  via [scripts/verify-changelog-render.mjs](scripts/verify-changelog-render.mjs) so an
-  incompatible changelog-preset/writer pairing fails the PR, not the post-merge run. It
-  is a direct render — not a `semantic-release --dry-run`, which short-circuits before
-  rendering on a PR event and, if forced past that, fails the read-only-token push check
-  on Dependabot/fork PRs). `Release notes render` is a **required status check** on `main`
-  (#46), so it actually blocks a merge — including Dependabot auto-merge, which gates only
-  on required checks — rather than merely going red on the PR. Being required also folds it
-  into merge-safety's base-health axis (which reads the base's required status checks), so
-  through the `merge-safety-self.yml` caller this repo sees a broken changelog toolchain on
-  its own base. The post-merge
-  `Release` publish job (release.yml) is deliberately **not** required — it is a push-only
-  publish, not a PR gate; the pre-merge render guard is its PR-time equivalent.
+  silently skip), and the shared
+  [release-check.yml](.github/workflows/release-check.yml) (pre-merge — loads
+  `.releaserc.json` the way semantic-release does and drives the real
+  commit-analyzer and release-notes-generator with the shared
+  [semantic-release-ci](https://github.com/rmartz/semantic-release-ci) toolchain, so a
+  config that would not release or render fails the PR, not the post-merge run. It is
+  not a `semantic-release --dry-run`, which short-circuits before rendering on a PR
+  event and, if forced past that, fails the read-only-token push check on
+  Dependabot/fork PRs). `release-check / release-check` is a **required status check**
+  on `main` (#46), so it actually blocks a merge — including Dependabot auto-merge,
+  which gates only on required checks — rather than merely going red on the PR. Being
+  required also folds it into merge-safety's base-health axis (which reads the base's
+  required status checks), so through the `merge-safety-self.yml` caller this repo
+  sees a broken release config on its own base. The post-merge `Release` publish job
+  (release.yml) is deliberately **not** required — it is a push-only publish, not a PR
+  gate; the pre-merge release check is its PR-time equivalent.
+- **The release toolchain lives in semantic-release-ci.** `semantic-release`, its
+  plugins (including `@semantic-release/exec`) and the changelog preset are **not** in
+  this repo's `package.json`; `release.yml` calls the shared workflow, pinned by SHA
+  and bumped by Dependabot. Never add the toolchain back or reintroduce a local render
+  script — a toolchain bump is tested once, in semantic-release-ci, before it reaches
+  the pin here.
 
 ## Agent directive files
 

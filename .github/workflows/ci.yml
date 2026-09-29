@@ -116,27 +116,3 @@ jobs:
                 [...refs].join("\n  "),
             );
           '
-
-  release-notes-render:
-    name: Release notes render
-    # Guard the release changelog toolchain: prove the installed preset +
-    # conventional-changelog-writer can actually render notes, so an incompatible
-    # pairing fails the PR here rather than on the post-merge Release run (which only
-    # fires on push to main; see release.yml). This is exactly the seam that a
-    # Dependabot bump of `conventional-changelog-conventionalcommits` past the writer
-    # semantic-release ships breaks.
-    #
-    # NOT a `semantic-release --dry-run`: semantic-release short-circuits before
-    # rendering notes on a pull_request event ("a new version won't be published"), so
-    # a dry-run never reaches generateNotes — a false pass. Defeating that
-    # short-circuit runs verifyConditions first, whose git push-permission check fails
-    # on the read-only GITHUB_TOKEN that Dependabot and fork PRs get, i.e. on precisely
-    # the bumps this guard must catch. The script invokes the genuine
-    # release-notes-generator render path directly — no token, no network, no push —
-    # so it works uniformly on every PR, including Dependabot's.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup
-      - run: pnpm run verify:release-notes
