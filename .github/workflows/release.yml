@@ -1,16 +1,21 @@
 name: Release
 
 # Automatic releases, tag/npm-as-source-of-truth (Option B, modeled on rmartz/envctl
-# and rmartz/repo-hygiene). semantic-release runs on every push to main: it analyzes
-# the conventional-commit subjects since the last vX.Y.Z tag, computes the next
-# version, publishes @rmartz/merge-safety to npmjs, creates the git tag + GitHub
-# Release, and comments on released PRs/issues.
+# and rmartz/repo-hygiene). semantic-release runs on every push to main through the
+# fleet's shared workflow (rmartz/semantic-release-ci): it analyzes the
+# conventional-commit subjects since the last vX.Y.Z tag, computes the next version,
+# publishes @rmartz/merge-safety to npmjs, creates the git tag + GitHub Release, and
+# comments on released PRs/issues. The release toolchain (semantic-release, its
+# plugins incl. @semantic-release/exec, and the changelog preset) lives in
+# semantic-release-ci, where a toolchain bump is tested before it reaches this pin;
+# the options stay here in .releaserc.json.
 #
 # npm auth is OIDC trusted publishing: npmjs trusts THIS workflow file
 # (`release.yml`) in rmartz/merge-safety, so there is no NPM_TOKEN secret. Renaming
 # this file breaks publishing until the trusted publisher on npmjs is updated to
 # match. Provenance attestations are generated automatically. OIDC publishing needs
-# npm >= 11.5.1, which the setup action gets by installing Node 24. Versions up to 0.6.0
+# npm >= 11.5.1: the shared workflow runs on Node 24 (npm 11) and, because this
+# workflow grants `id-token: write`, fails before tagging if npm is older. Versions up to 0.6.0
 # were published to GitHub Packages and stay there, so reusable-workflow pins at
 # those tags keep installing from GitHub Packages; later tags install from npmjs.
 #
@@ -46,9 +51,12 @@ on:
         description: Existing release tag to publish to npm (e.g. v0.10.0)
         required: true
 
-# Serialize releases so two pushes can't publish concurrently.
+# Serialize releases and backfills so two runs can't publish concurrently. (The
+# shared workflow also serializes its release job per repository.)
 concurrency: release
 
+# The shared workflow declares no permissions of its own; the release job runs with
+# these. The backfill job narrows them to what it needs.
 permissions:
   contents: write # create tags and GitHub releases
   id-token: write # npm trusted publishing (OIDC) + provenance
@@ -57,20 +65,12 @@ permissions:
 
 jobs:
   release:
-    name: Release
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # semantic-release needs full history + tags
-          persist-credentials: false # authenticates via GITHUB_TOKEN below
-      - uses: ./.github/actions/setup
-      - run: pnpm run build
-      - run: pnpm exec semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: rmartz/semantic-release-ci/.github/workflows/semantic-release.yml@dbcbcd8e0425ae4c0aa294d6595566ac4643a83d # v1.1.0
+    with:
+      # Build dist/ before the `prepare`-step `npm publish` packs it; the shared
+      # workflow installs this repo's dependencies (pnpm, frozen lockfile) first.
+      build-command: pnpm run build
 
   backfill:
     name: Backfill ${{ inputs.tag }}

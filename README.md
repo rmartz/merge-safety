@@ -116,9 +116,11 @@ zero-runtime-dependency package, all Dependabot bumps are dev-only in practice.
 Three guards back the automatic flow: [`pr-title-lint.yml`](.github/workflows/pr-title-lint.yml)
 (pre-merge title format), [`commit-convention.yml`](.github/workflows/commit-convention.yml)
 (post-merge tripwire for a non-conventional subject that would make semantic-release
-silently skip), and, in [`ci.yml`](.github/workflows/ci.yml), the `Release notes render`
-job (renders the notes through the real changelog toolchain so an incompatible
-preset/writer pairing fails the PR) and the `Package`
+silently skip), the shared [`release-check.yml`](.github/workflows/release-check.yml)
+(renders the notes through the shared
+[semantic-release-ci](https://github.com/rmartz/semantic-release-ci) toolchain so an
+incompatible release config fails the PR), and, in [`ci.yml`](.github/workflows/ci.yml),
+the `Package`
 job (packs exactly what `pnpm publish` would upload and fails if the tarball is
 malformed or missing an `exports`/`bin` entry point) — so both a broken release config
 and a broken packaging manifest are caught before merge, not on the real release run.
