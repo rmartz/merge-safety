@@ -3,8 +3,8 @@
  * rendered as the human-readable lines the check-run output carries.
  *
  * Split from `merge-safety.ts` (the verdict *logic*) so each stays under its
- * `max-lines` cap as axes accumulate: #53 added the diff-derived breaking signals
- * and #54 the stacked-base barrier. Presentation is a genuinely separate concern —
+ * `max-lines` cap as axes accumulate (#53 added the diff-derived breaking
+ * signals). Presentation is a genuinely separate concern —
  * nothing here decides anything, it only formats.
  */
 import type { BreakingDiffKind, BreakingDiffSignal } from './breaking-diff.js';

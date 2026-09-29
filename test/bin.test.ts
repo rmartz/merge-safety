@@ -69,8 +69,6 @@ const facts = (over: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts => ({
   failingBaseChecks: [],
   prBreakingDiffSignals: [],
   prMayCarryBreakingMarker: false,
-  baseBranch: 'main',
-  stackedOnPr: null,
   ...over,
 });
 

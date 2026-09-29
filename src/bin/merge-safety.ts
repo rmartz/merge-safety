@@ -22,11 +22,9 @@ import {
   gatherMergeSafetyFacts,
   makeGitRunner,
   type BaseChecksProbe,
-  type BasePrProbe,
   type PrMergeMeta,
   type RequiredChecksProbe,
 } from '../merge-safety-facts.js';
-import { DEFAULT_EXEMPT_BASE_LABELS } from '../stacked-base.js';
 
 /** The conventional consumer caller filename the invalidate fan-out re-dispatches. */
 const DEFAULT_CALLER_WORKFLOW = 'merge-safety.yml';
@@ -45,19 +43,12 @@ export interface Args {
   workflow: string;
   cwd?: string;
   /**
-   * The repository default branch, used by the stacked-PR barrier (#54). Absent →
-   * resolved from `gh repo view`; unresolvable → the barrier is disabled rather
-   * than holding every PR.
-   */
-  defaultBranch?: string;
-  /**
    * `invalidate` only: the branch that moved, whose open PRs are fanned out over.
    * Any branch, not just the default — a push to a stacked parent's branch must
-   * invalidate its children (#54). Absent → the resolved default branch.
+   * invalidate its children, which may now be stale. Absent → the resolved default
+   * branch.
    */
   baseBranch?: string;
-  /** Labels on a base PR that exempt its children from the barrier (#54). */
-  exemptBaseLabels: readonly string[];
   /** Decision-only: print the verdict as JSON and perform no side effects. */
   json: boolean;
 }
@@ -65,7 +56,6 @@ export interface Args {
 function usage(): never {
   console.error(
     'usage: ai-merge-safety evaluate --pr <n> [--json] [--repo <o/r>] [--base <ref>] [--cwd <path>]\n' +
-      '                                 [--default-branch <name>] [--exempt-base-labels <csv>]\n' +
       '       ai-merge-safety invalidate [--base-branch <name>] [--workflow <file>] [--exclude <n>]\n' +
       '                                   [--repo <o/r>] [--cwd <path>]',
   );
@@ -79,7 +69,6 @@ function parse(argv: string[]): Args {
     mode,
     baseRef: 'origin/main',
     workflow: DEFAULT_CALLER_WORKFLOW,
-    exemptBaseLabels: DEFAULT_EXEMPT_BASE_LABELS,
     json: false,
   };
   for (let i = 1; i < argv.length; i++) {
@@ -90,13 +79,7 @@ function parse(argv: string[]): Args {
     else if (a === '--base') args.baseRef = argv[++i] ?? args.baseRef;
     else if (a === '--workflow') args.workflow = argv[++i] ?? args.workflow;
     else if (a === '--cwd') args.cwd = argv[++i];
-    else if (a === '--default-branch') args.defaultBranch = argv[++i];
     else if (a === '--base-branch') args.baseBranch = argv[++i];
-    else if (a === '--exempt-base-labels')
-      args.exemptBaseLabels = (argv[++i] ?? '')
-        .split(',')
-        .map((l) => l.trim())
-        .filter(Boolean);
     else if (a === '--json' || a === '--dry-run') args.json = true;
     else usage();
   }
@@ -193,42 +176,9 @@ export function makeRequiredChecksProbe(repo: string, cwd?: string): RequiredChe
 }
 
 /**
- * A real base-PR probe: the open PR whose **head** is `baseBranch`, i.e. this PR's
- * stacked parent (#54). Soft-fails to `null` (not stacked) on any read error or
- * malformed payload, so a transient `gh` failure never holds a PR that may not be
- * stacked at all. `--limit 1` suffices: a branch heads at most one open PR.
- */
-export function makeBasePrProbe(repo: string, cwd?: string): BasePrProbe {
-  return async (baseBranch) => {
-    const prs = await ghJson<{ number: number; labels: { name: string }[] }[]>(
-      [
-        'gh',
-        'pr',
-        'list',
-        '--repo',
-        repo,
-        '--state',
-        'open',
-        '--head',
-        baseBranch,
-        '--limit',
-        '1',
-        '--json',
-        'number,labels',
-      ],
-      cwd,
-    );
-    const pr = prs?.[0];
-    if (!pr) return null;
-    return { number: pr.number, labels: (pr.labels ?? []).map((l) => l.name) };
-  };
-}
-
-/**
- * The repository default branch — for the stacked barrier, and as the fan-out
- * base when `invalidate` is not told which branch moved. Returns `null` when it
- * cannot be read: the barrier is then disabled rather than stranding every PR, and
- * `invalidate` refuses rather than guessing.
+ * The repository default branch — the fan-out base when `invalidate` is not told
+ * which branch moved. Returns `null` when it cannot be read, and `invalidate` then
+ * refuses rather than guessing.
  */
 async function resolveDefaultBranch(
   repo: string,
@@ -308,9 +258,6 @@ export async function runEvaluate(repo: string, pr: number, args: Args): Promise
       git: makeGitRunner(args.cwd),
       baseChecks: makeBaseChecksProbe(repo, args.cwd),
       requiredChecks: makeRequiredChecksProbe(repo, args.cwd),
-      basePr: makeBasePrProbe(repo, args.cwd),
-      defaultBranch: await resolveDefaultBranch(repo, args.defaultBranch, args.cwd),
-      exemptBaseLabels: args.exemptBaseLabels,
     });
     decision = evaluateMergeSafety(facts);
   } catch (err) {
@@ -366,7 +313,7 @@ function emitDecisionJson(decision: MergeSafetyDecision, isError: boolean): void
 
 export async function runInvalidate(repo: string, args: Args): Promise<void> {
   // Never assume `main`: a consumer whose default branch is named otherwise would
-  // match nothing and leave every PR holding a stale green check (#54).
+  // match nothing and leave every PR holding a stale green check.
   const baseBranch = await resolveDefaultBranch(repo, args.baseBranch, args.cwd);
   if (!baseBranch) throw new Error('could not resolve the base branch to fan out over');
   const prs = await ghJson<{ number: number; headRefOid: string }[]>(

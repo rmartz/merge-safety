@@ -27,8 +27,6 @@ function staleFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts
     failingBaseChecks: [],
     prBreakingDiffSignals: [],
     prMayCarryBreakingMarker: false,
-    baseBranch: 'main',
-    stackedOnPr: null,
     ...overrides,
   };
 }

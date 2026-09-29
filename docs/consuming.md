@@ -25,18 +25,10 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 > `ai-ensure-labels` seeds the standard roster (which includes all three), or
 > create them by hand — so the labels track the verdict from the first run.
 >
-> **The stacked-PR barrier has an opt-out for accumulator branches.** A PR whose
-> base is the head of another open PR is held until that PR merges. If your repo
-> uses long-lived branches that children are _meant_ to merge into — a release
-> train, an epic stack — label that branch's tracking PR and name the label in the
-> caller's `stacked-base-exempt-labels` input (default `release,epic`). Set the
-> input to an empty string to bar every stacked PR unconditionally. A base branch
-> with no open PR is never barred, so an integration branch without a tracking PR
-> needs no configuration.
->
 > **Stacked children are only re-evaluated when their parent moves if the caller
 > triggers on that push.** `invalidate` fans out over the PRs based on whichever
-> branch was pushed, so a push to a stacked parent's branch re-holds its children —
+> branch was pushed, so a push to a stacked parent's branch re-checks its children
+> against the moved base —
 > but only for branches the caller's `push:` trigger subscribes to. The example
 > below subscribes to the default branch alone; if your repo stacks PRs, widen it
 > (e.g. `branches: ['**']`) so parent branches fan out too. The cost is one short
