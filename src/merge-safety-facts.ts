@@ -15,6 +15,8 @@ import {
   isBreakingTitle,
   isCiCommitMessage,
   isCiTitle,
+  isDocsCommitMessage,
+  isDocsTitle,
   mayCarryBreakingMarker,
   overlappingFiles,
   BREAKING_LABEL,
@@ -278,6 +280,9 @@ export async function gatherMergeSafetyFacts(
     // the diff can only ever add a reason to treat the PR as breaking (#53).
     prIsBreaking:
       isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL) || diffSignals.length > 0,
+    prIsDocs: isDocsTitle(meta.title),
+    baseOnlyDocsSinceMergeBase:
+      commits.length > 0 && commits.every((c) => isDocsCommitMessage(c.message)),
     // Title or path (#67): a release-typed PR that changes CI is still re-tested.
     prIsCi: isCiTitle(meta.title) || prFiles.some(isCiPath),
     fileOverlap: overlaps.length > 0,

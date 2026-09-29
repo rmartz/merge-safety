@@ -558,3 +558,51 @@ describe('gatherMergeSafetyFacts — the path-based CI signal (#67)', () => {
     expect(facts.baseCiCommits).toEqual([{ sha: 'sha-ci', subject: 'ci: add job' }]);
   });
 });
+
+describe('gatherMergeSafetyFacts — the docs facts', () => {
+  /** A stale-PR git fake whose base moved by the given commits. */
+  function gitWithLog(log: string): GitRunner {
+    return fakeGit({
+      'merge-base HEAD1 origin/main': 'BASE',
+      'rev-parse origin/main': 'TIP',
+      'log -z --format=%H%n%B BASE..origin/main': log,
+      'log --format=%x00%H --name-only BASE..origin/main': '',
+      'diff --name-only BASE origin/main': 'docs/a.md',
+      'diff --name-only BASE HEAD1': 'src/b.ts',
+      'diff --unified=0 BASE HEAD1': '',
+    });
+  }
+
+  const probes = { baseChecks: fakeChecks(), requiredChecks: fakeRequired() };
+
+  it('flags baseOnlyDocsSinceMergeBase only when every base commit is docs-typed', async () => {
+    const allDocs = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWithLog('sha-d1\ndocs: one\0sha-d2\ndocs(scope): two'),
+    });
+    expect(allDocs.baseOnlyDocsSinceMergeBase).toBe(true);
+
+    const mixed = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWithLog('sha-d1\ndocs: one\0sha-fix\nfix: small'),
+    });
+    expect(mixed.baseOnlyDocsSinceMergeBase).toBe(false);
+
+    const none = await gatherMergeSafetyFacts(meta, { ...probes, git: gitWithLog('') });
+    expect(none.baseOnlyDocsSinceMergeBase).toBe(false);
+  });
+
+  it('flags prIsDocs from a docs-typed title', async () => {
+    const docs = await gatherMergeSafetyFacts(
+      { ...meta, title: 'docs(consuming): clarify' },
+      { ...probes, git: gitWithLog('sha-fix\nfix: small') },
+    );
+    expect(docs.prIsDocs).toBe(true);
+
+    const feat = await gatherMergeSafetyFacts(meta, {
+      ...probes,
+      git: gitWithLog('sha-fix\nfix: small'),
+    });
+    expect(feat.prIsDocs).toBe(false);
+  });
+});

@@ -30,6 +30,13 @@ gathers the safety **facts** for that one PR against its base:
   (`feat`/`fix`/`perf`) PR may now change CI without a `ci` prefix. A shipped
   `workflow_call` workflow counts too: the extra rebase after one merges is
   unnecessary but harmless, and it avoids parsing triggers.
+- **Docs carve-out** — a breaking change and a `docs` change do not force each
+  other current by existence alone, only through a shared file (the file-overlap
+  fact still applies either way). A `docs:`-titled PR is not held by a breaking
+  commit on the base (unless its own diff is itself breaking), and a breaking PR is
+  not held when every commit the base moved by is `docs`-typed. The carve-out does
+  **not** reach the CI clauses: a CI change can add a rule that enforces over docs
+  files, so a `ci` change still forces a `docs` PR current in both directions.
 - **Breaking change, PR-side — self-derived** — is _this PR_ a breaking change?
   The PR title's `!` marker and a `breaking change` label are still read, but the
   verdict no longer depends on them: it also reads the PR's **own diff** for a
