@@ -51,6 +51,7 @@
     "verify:release-notes": "node scripts/verify-changelog-render.mjs"
   },
   "devDependencies": {
+    "@semantic-release/exec": "^7.1.0",
     "@semantic-release/release-notes-generator": "^14.1.1",
     "@types/node": "^26.6.2",
     "@typescript-eslint/eslint-plugin": "^8.70.0",

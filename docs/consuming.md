@@ -244,10 +244,11 @@ Packages, and a pin at one of those tags installs from there using the built-in
 `GITHUB_TOKEN` — that is the only reason for the `packages: read` permission above,
 and you can remove it once Dependabot has moved your pin past v0.6.0.
 
-> **Do not pin v0.7.0 through v0.10.0.** Those tags exist, but their npm publish
-> failed (the release ran npm 10, which can't use OIDC trusted publishing), so no
-> package exists for them and the install step fails with `ETARGET`. Pin v0.10.1 or
-> later, which carries the same features and is on npmjs.
+> **Do not pin v0.7.0 through v0.9.0.** Their release ran npm 10, which can't use
+> OIDC trusted publishing, so those tags have no npm package and the install step
+> fails with `ETARGET`. v0.10.0 had the same failure but was backfilled with the
+> release workflow's manual `backfill` path, so it and later versions install
+> normally.
 
 > **Several overlapping `merge-safety` runs on one PR are expected.** A single PR
 > action can fire several `pull_request_target` events near-simultaneously

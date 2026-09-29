@@ -15,7 +15,8 @@
       }
     ],
     ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
-    "@semantic-release/npm",
+    ["@semantic-release/npm", { "npmPublish": false }],
+    ["@semantic-release/exec", { "prepareCmd": "npm publish" }],
     "@semantic-release/github"
   ]
 }
