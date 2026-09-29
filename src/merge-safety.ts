@@ -10,11 +10,13 @@
  * maps gathered *facts* to a verdict, and the caller owns the emission channel.
  *
  * The rule (a PR **must be brought current** when it is not already current AND):
- *   1. a **breaking** commit landed on the base since the PR's merge-base, OR
+ *   1. a **breaking** commit landed on the base since the PR's merge-base **and the
+ *      PR is not a (non-breaking) `docs` PR**, OR
  *   2. a **CI** commit landed on the base since merge-base — `ci`-typed, or one
  *      that changed `.github/workflows/**` / `.github/actions/**` (#67) — (the
  *      coordinator rebases in-flight PRs past CI changes, by prefix or path), OR
- *   3. the PR is **itself** a breaking change, OR
+ *   3. the PR is **itself** a breaking change **and the base has moved by more than
+ *      `docs` commits alone**, OR
  *   4. the PR is **itself** a CI change (`ci`-typed, or its diff touches those
  *      paths) **and is not a hotfix** — a CI
  *      guard is only as good as the base it last ran against, so a CI PR that was
@@ -31,6 +33,10 @@
  *      OR
  *   5. the PR's changed files **intersect** the files changed on the base since
  *      merge-base.
+ *
+ * The `docs` carve-outs on clauses 1 and 3 (a breaking and a docs change interact
+ * only through a shared file; CI changes get no such carve-out) are explained in
+ * `staleness.ts`, which evaluates clauses 1–5.
  *
  * Clause 5 is a *narrowing* guard, not a widening one: it only ever forces more
  * PRs current. Git can merge two disjoint-looking diffs cleanly and still produce
@@ -70,7 +76,8 @@ import { firstLine } from './conventional-commits.js';
 
 export type { BaseCommit } from './reasons.js';
 import { stackedBaseReason } from './stacked-base.js';
-import { breakingSignalDetail, formatBaseCommit, withDetail, type BaseCommit } from './reasons.js';
+import { evaluateStaleness } from './staleness.js';
+import { withDetail, type BaseCommit } from './reasons.js';
 import { hasSignal, signalDetail, type BreakingDiffSignal } from './breaking-diff.js';
 
 /** Labels the check drives on a PR. Structural (`as const`) per repo convention. */
@@ -121,6 +128,8 @@ export {
   isBreakingTitle,
   isCiCommitMessage,
   isCiTitle,
+  isDocsCommitMessage,
+  isDocsTitle,
   mayCarryBreakingMarker,
 } from './conventional-commits.js';
 
@@ -155,6 +164,18 @@ export interface MergeSafetyFacts {
   baseCiSinceMergeBase: boolean;
   /** The PR is itself a breaking change (title `!` marker or `breaking change` label). */
   prIsBreaking: boolean;
+  /**
+   * The PR title is a `docs:` / `docs(scope):` conventional commit. A non-breaking
+   * docs PR is exempt from the base-breaking clause (a breaking base change only
+   * forces it current through a shared file, via `fileOverlap`).
+   */
+  prIsDocs: boolean;
+  /**
+   * The base moved since merge-base, and **every** commit it moved by is
+   * `docs`-typed. Exempts the `prIsBreaking` clause: a breaking PR behind only docs
+   * commits need not be brought current unless the files overlap.
+   */
+  baseOnlyDocsSinceMergeBase: boolean;
   /**
    * The PR is itself a CI change: title `ci:` / `ci(scope):`, or its own diff
    * changes `.github/workflows/**` / `.github/actions/**` (#67).
@@ -295,47 +316,9 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     );
   }
 
-  const stale = !facts.isCurrent;
-  if (stale && facts.baseBreakingSinceMergeBase) {
-    reasons.push(
-      withDetail(
-        'A breaking change landed on the base since merge-base — rebase and re-run CI:',
-        facts.baseBreakingCommits.map(formatBaseCommit),
-      ),
-    );
-  }
-  if (stale && facts.prIsBreaking) {
-    reasons.push(
-      withDetail(
-        'This PR is a breaking change — it must be current with the base before merge.',
-        breakingSignalDetail(facts.prBreakingDiffSignals),
-      ),
-    );
-  }
-  if (stale && facts.prIsCi && !facts.prIsHotfix) {
-    reasons.push(
-      'This PR is a CI change — it must be current with the base before merge, so it is ' +
-        're-tested against the latest base and cannot green a guard against a pattern that ' +
-        'has since regressed.',
-    );
-  }
-  if (stale && facts.baseCiSinceMergeBase) {
-    reasons.push(
-      withDetail(
-        'A CI change landed on the base since merge-base — rebase to re-test under it:',
-        facts.baseCiCommits.map(formatBaseCommit),
-      ),
-    );
-  }
-  if (stale && facts.fileOverlap) {
-    reasons.push(
-      withDetail(
-        'This PR changes files the base also changed since merge-base — sync with base and ' +
-          're-run CI before merging to ensure the changes are compatible:',
-        facts.overlappingFiles,
-      ),
-    );
-  }
+  // The staleness axis (clauses 1–5): what forces a behind PR to be brought current.
+  const { needsUpdate, reasons: stalenessReasons } = evaluateStaleness(facts);
+  reasons.push(...stalenessReasons);
 
   // The retitle axis (#53). A CI-sensitive linter/formatter bump must force every
   // in-flight sibling to re-test under the new tool version after this merges, and
@@ -349,14 +332,6 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
   const needsCiRetitle = hasSignal(facts.prBreakingDiffSignals, 'sensitive-package-bump')
     ? !facts.prIsCi
     : false;
-
-  const needsUpdate =
-    stale &&
-    (facts.baseBreakingSinceMergeBase ||
-      facts.baseCiSinceMergeBase ||
-      facts.prIsBreaking ||
-      (facts.prIsCi && !facts.prIsHotfix) ||
-      facts.fileOverlap);
 
   // Listed last so a PR that is also stale or conflicting leads with the reason its
   // title names — the summary takes reasons[0], and the two must agree.

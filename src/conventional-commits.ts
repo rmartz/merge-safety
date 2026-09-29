@@ -27,6 +27,9 @@ const BREAKING_FOOTER_RE = /^BREAKING[ -]CHANGE:/m;
 /** A `ci`-typed conventional commit (with or without a scope / `!`). */
 const CI_SUBJECT_RE = /^ci(\([^)]*\))?!?:/;
 
+/** A `docs`-typed conventional commit (with or without a scope / `!`). */
+const DOCS_SUBJECT_RE = /^docs(\([^)]*\))?!?:/;
+
 /**
  * Conventional-commit types that may carry a `!` breaking marker. In a
  * semantic-release repo `!` fires a MAJOR release, so it is reserved for types
@@ -55,6 +58,11 @@ export function isCiCommitMessage(message: string): boolean {
   return CI_SUBJECT_RE.test(firstLine(message));
 }
 
+/** True when a commit message is a `docs`-typed conventional commit. */
+export function isDocsCommitMessage(message: string): boolean {
+  return DOCS_SUBJECT_RE.test(firstLine(message));
+}
+
 /** True when a PR title carries the conventional-commit breaking `!` marker. */
 export function isBreakingTitle(title: string): boolean {
   return BREAKING_SUBJECT_RE.test(title.trim());
@@ -63,6 +71,11 @@ export function isBreakingTitle(title: string): boolean {
 /** True when a PR title is a `ci`-typed conventional commit. */
 export function isCiTitle(title: string): boolean {
   return CI_SUBJECT_RE.test(title.trim());
+}
+
+/** True when a PR title is a `docs`-typed conventional commit. */
+export function isDocsTitle(title: string): boolean {
+  return DOCS_SUBJECT_RE.test(title.trim());
 }
 
 /**
