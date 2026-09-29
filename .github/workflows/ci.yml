@@ -83,7 +83,9 @@ jobs:
           # user asked for. On its own it still exits 0 for a broken `dist`, so we then
           # pack for real (locally) and assert the tarball actually contains every
           # entry point `exports`/`bin` promise. That assertion is the guard with teeth.
-          pnpm publish --dry-run --no-git-checks
+          # `--tag` is required: npm 11 won't implicitly tag `latest` when the 0.0.0
+          # placeholder is lower than a version already on the registry.
+          pnpm publish --dry-run --no-git-checks --tag dry-run
           tarball="$(pnpm pack | tail -1)"
           tar -tzf "$tarball" | sed 's#^package/##' > packed-files.txt
           node --input-type=module -e '

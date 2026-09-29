@@ -9,9 +9,18 @@ name: Release
 # npm auth is OIDC trusted publishing: npmjs trusts THIS workflow file
 # (`release.yml`) in rmartz/merge-safety, so there is no NPM_TOKEN secret. Renaming
 # this file breaks publishing until the trusted publisher on npmjs is updated to
-# match. Provenance attestations are generated automatically. Versions up to 0.6.0
+# match. Provenance attestations are generated automatically. OIDC publishing needs
+# npm >= 11.5.1, which the setup action gets by installing Node 24. Versions up to 0.6.0
 # were published to GitHub Packages and stay there, so reusable-workflow pins at
 # those tags keep installing from GitHub Packages; later tags install from npmjs.
+#
+# The npm publish runs in semantic-release's `prepare` step (via
+# @semantic-release/exec; @semantic-release/npm only writes the version, with
+# npmPublish: false), because semantic-release pushes the git tag after `prepare`
+# and before `publish`. Publishing in `publish` left v0.7.0–v0.10.0 as tags with no
+# package when npm failed, and the reusable workflow's install step then failed for
+# anyone pinned to them. Publishing first means a failed publish aborts the release
+# before any tag exists.
 #
 # There is deliberately NO @semantic-release/git plugin: package.json is never bumped
 # back to main (it stays a placeholder — see its "version" field), so the released
@@ -28,6 +37,14 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual backfill: publish the package for an existing vX.Y.Z tag whose release
+  # tagged but never published (v0.7.0–v0.10.0 hit this). It lives in this file
+  # because the npm trusted publisher is tied to the `release.yml` filename.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish to npm (e.g. v0.10.0)
+        required: true
 
 # Serialize releases so two pushes can't publish concurrently.
 concurrency: release
@@ -41,6 +58,7 @@ permissions:
 jobs:
   release:
     name: Release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -53,3 +71,39 @@ jobs:
       - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  backfill:
+    name: Backfill ${{ inputs.tag }}
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # check out the tag
+      id-token: write # npm trusted publishing (OIDC) + provenance
+    steps:
+      - name: Validate the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' is not a vX.Y.Z tag"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      # Not ./.github/actions/setup: that path now resolves to the TAG's copy, which
+      # for v0.7.0–v0.10.0 installs Node 22 (npm 10, which can't publish via OIDC).
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      # `--tag backfill` keeps an older backfilled version from taking `latest`;
+      # consumers install exact versions, so the dist-tag doesn't affect them.
+      - name: Publish
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          npm pkg set version="${TAG#v}"
+          npm publish --tag backfill

@@ -121,7 +121,10 @@ Most are enforced by eslint; the intent:
   to `main` runs [release.yml](.github/workflows/release.yml): it analyzes the
   conventional-commit subjects since the last `vX.Y.Z` tag, computes the next version,
   publishes `@rmartz/merge-safety` to npmjs (public), and creates the git tag +
-  GitHub Release — using only the built-in `GITHUB_TOKEN` (no release-please, no PAT,
+  GitHub Release. The publish runs in semantic-release's `prepare` step, before the
+  tag is pushed, so a failed publish never leaves a tag without a package; do not
+  move it back to `@semantic-release/npm`'s `publish` step. It uses only the
+  built-in `GITHUB_TOKEN` (no release-please, no PAT,
   no manual `pnpm version` step). npm auth is OIDC trusted publishing tied to the
   `release.yml` filename (no `NPM_TOKEN`); renaming that workflow breaks publishing
   until the trusted publisher on npmjs is updated. **Do not bump `package.json` by hand** — its
