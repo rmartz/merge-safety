@@ -7,7 +7,6 @@
  */
 import { boundedRun } from './lib/bounded-subprocess.js';
 import { breakingDiffSignals } from './breaking-diff.js';
-import { DEFAULT_EXEMPT_BASE_LABELS, stackedParentPr, type BasePr } from './stacked-base.js';
 import {
   failingFallbackBaseChecks,
   failingRequiredBaseChecks,
@@ -47,15 +46,6 @@ export type BaseChecksProbe = (baseSha: string) => Promise<readonly BaseCheckRun
  */
 export type RequiredChecksProbe = (baseBranch: string) => Promise<readonly string[] | null>;
 
-/**
- * Fetches the open PR whose **head** is a given branch — this PR's stacked parent
- * (#54) — or `null` when no open PR heads it. A failed probe also yields `null`,
- * which deliberately reads as "not stacked": an unreadable lookup must not hold a
- * PR that may not be stacked at all, the same never-wedge posture as the check
- * probes above. Injected like {@link BaseChecksProbe}.
- */
-export type BasePrProbe = (baseBranch: string) => Promise<BasePr | null>;
-
 const GIT_TIMEOUT_MS = 30_000;
 
 /**
@@ -94,25 +84,6 @@ export interface GatherOptions {
   baseChecks: BaseChecksProbe;
   /** Probe for the base branch's required status checks, scoping base health (#40). */
   requiredChecks: RequiredChecksProbe;
-  /**
-   * Probe for the open PR heading this PR's base branch, driving the barrier (#54).
-   * Optional: a caller with no interest in the barrier may omit it, and the default
-   * reports "nothing heads the base" — the barrier is inert rather than guessing.
-   */
-  basePr?: BasePrProbe;
-  /**
-   * The repository default branch. `null`/absent **disables the stacked barrier**
-   * rather than treating every PR as stacked — an unresolved default branch must
-   * never strand the whole open set.
-   */
-  defaultBranch?: string | null;
-  /**
-   * Labels on a base branch's tracking PR that exempt its children from the
-   * barrier (a `release` train, an `epic` stack's top). Defaults to
-   * {@link DEFAULT_EXEMPT_BASE_LABELS}; a consumer overrides it via the reusable
-   * workflow's `stacked-base-exempt-labels` input.
-   */
-  exemptBaseLabels?: readonly string[];
 }
 
 function splitLines(out: string | null): string[] {
@@ -187,15 +158,7 @@ function selectCommits(
  */
 export async function gatherMergeSafetyFacts(
   meta: PrMergeMeta,
-  {
-    baseRef = 'origin/main',
-    git,
-    baseChecks,
-    requiredChecks,
-    basePr = async () => null,
-    defaultBranch = null,
-    exemptBaseLabels = DEFAULT_EXEMPT_BASE_LABELS,
-  }: GatherOptions,
+  { baseRef = 'origin/main', git, baseChecks, requiredChecks }: GatherOptions,
 ): Promise<MergeSafetyFacts> {
   const mergeBase = (await git(['merge-base', meta.headSha, baseRef]))?.trim();
   const baseTip = (await git(['rev-parse', baseRef]))?.trim();
@@ -259,16 +222,6 @@ export async function gatherMergeSafetyFacts(
   if (prDiff === null) throw new Error(`git diff failed for ${mergeBase}..${meta.headSha}`);
   const diffSignals = breakingDiffSignals(prDiff);
 
-  // Only a non-default base can be stacked, so the probe is skipped entirely in the
-  // ordinary case — one fewer API call on every PR targeting the default branch.
-  const parentPr = defaultBranch && baseBranch !== defaultBranch ? await basePr(baseBranch) : null;
-  const stackedOnPr = stackedParentPr({
-    baseBranch,
-    defaultBranch,
-    basePr: parentPr,
-    exemptLabels: exemptBaseLabels,
-  });
-
   const labels = meta.labels.map((l) => l.toLowerCase());
 
   return {
@@ -295,7 +248,5 @@ export async function gatherMergeSafetyFacts(
     failingBaseChecks,
     prBreakingDiffSignals: diffSignals,
     prMayCarryBreakingMarker: mayCarryBreakingMarker(meta.title),
-    baseBranch,
-    stackedOnPr,
   };
 }

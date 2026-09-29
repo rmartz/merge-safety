@@ -66,17 +66,6 @@ gathers the safety **facts** for that one PR against its base:
   base health, below). The exemption is CI-clause-only: the breaking and base-side
   clauses stay in force.
 - **Conflicts** — does the PR merge cleanly, or is there a conflict?
-- **Stacked base** — is the PR's base branch the head of **another open PR**? Such
-  a PR is _stacked_: it must not merge until its base PR does, after which GitHub
-  retargets it to the default branch and it merges normally. Review and fixes carry
-  on meanwhile — only the merge is held. Two deliberate narrowings keep this from
-  stranding anything: a base branch with **no open PR** is never barred (nothing
-  will ever land to release it), and a base PR labelled as a long-lived
-  **accumulator** — a `release` train, the top of an `epic` stack — exempts its
-  children, since those are designed to be merged into. The exempt vocabulary is a
-  workflow input (`stacked-base-exempt-labels`), not a hard-coded label set, because
-  the check-run is a fleet contract and that policy belongs to the caller. An
-  unresolvable default branch disables the axis rather than holding every PR.
 - **Base health** — is the **base branch's own CI** failing? A red base blocks
   every PR **except a `hotfix`-labelled one**, so the fix for broken main still
   gets through while nothing else piles onto it. "Failing CI" is scoped to the base
@@ -102,9 +91,9 @@ without showing a red ✗; see
 **reconciles the
 labels** that surface the reason to humans and to the coordinator — the
 update-required and merge-conflict labels — adding or removing each to match the
-current facts. (The base-health and stacked-base axes mint no
-label; the `hotfix` label is an _input_ base health reads, and both outcomes are
-carried by the check-run title/reason.)
+current facts. (The base-health axis mints no label; the `hotfix` label is an
+_input_ base health reads, and its outcome is carried by the check-run
+title/reason.)
 
 One label is handled differently. **`breaking change` is add-only**: the check
 applies it when the diff proves a dependency **major** bump _and_ the PR's title
@@ -117,6 +106,11 @@ API break. Labelling either would stamp `!` on a functional-typed PR and fire a
 spurious semantic-release **major**. (Detection lives here; the title stamping
 stays in the coordinator's merge transaction, which is the only place that can
 rewrite a subject and holds the release-please exemption.)
+
+Whether a PR may merge into a **non-default base** at all — e.g. holding a
+stacked PR until its parent PR lands — is merge _policy_, not merge safety, and
+is out of scope here: it belongs in `pr-policy`. merge-safety evaluates a stacked
+PR against its actual base like any other.
 
 ## `invalidate` — the base moved (or its CI flipped)
 
