@@ -18,6 +18,7 @@ import {
   isDocsTitle,
   mayCarryBreakingMarker,
   overlappingFiles,
+  BREAKING_ISOLATED_LABEL,
   BREAKING_LABEL,
   HOTFIX_LABEL,
   type BaseCheckRun,
@@ -223,6 +224,7 @@ export async function gatherMergeSafetyFacts(
   const diffSignals = breakingDiffSignals(prDiff);
 
   const labels = meta.labels.map((l) => l.toLowerCase());
+  const prDeclaresBreaking = isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL);
 
   return {
     isCurrent,
@@ -231,8 +233,9 @@ export async function gatherMergeSafetyFacts(
     baseCiSinceMergeBase: baseCiCommits.length > 0,
     // Additive by construction: the title marker and the label remain inputs, and
     // the diff can only ever add a reason to treat the PR as breaking (#53).
-    prIsBreaking:
-      isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL) || diffSignals.length > 0,
+    prIsBreaking: prDeclaresBreaking || diffSignals.length > 0,
+    prDeclaresBreaking,
+    prDeclaresBreakingIsolated: labels.includes(BREAKING_ISOLATED_LABEL),
     prIsDocs: isDocsTitle(meta.title),
     baseOnlyDocsSinceMergeBase:
       commits.length > 0 && commits.every((c) => isDocsCommitMessage(c.message)),

@@ -27,6 +27,8 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
     baseBreakingSinceMergeBase: false,
     baseCiSinceMergeBase: false,
     prIsBreaking: false,
+    prDeclaresBreaking: false,
+    prDeclaresBreakingIsolated: false,
     prIsDocs: false,
     baseOnlyDocsSinceMergeBase: false,
     prIsCi: false,
@@ -512,7 +514,7 @@ describe('errorMergeSafetyDecision', () => {
     expect(d.hasConflict).toBe(false);
     expect(d.baseUnhealthy).toBe(false);
     expect(d.reasons).toEqual(['git log failed for BASE..origin/main']);
-    expect(d.labels).toEqual({ add: [], remove: [], addOnly: [] });
+    expect(d.labels).toEqual({ add: [], remove: [] });
   });
 });
 
@@ -559,41 +561,13 @@ describe('evaluateMergeSafety — the diff-derived breaking signals (#53)', () =
     expect(d.reasons.join('\n')).toContain('dependency major bump: left-pad 2.1.0 → 3.0.0');
   });
 
-  it('proposes `breaking change` for a major bump on a functional-typed PR', () => {
-    const d = evaluateMergeSafety(
-      withSignal('major-version-bump', ['left-pad 2.1.0 → 3.0.0'], {
-        prMayCarryBreakingMarker: true,
-      }),
-    );
-    expect(d.labels.addOnly).toEqual(['breaking change']);
-    // Add-only: it never appears in the reconciled removals.
-    expect(d.labels.remove).toEqual([...MERGE_SAFETY_LABELS]);
-  });
-
-  it('withholds the label on a non-functional type, where merge would strip it', () => {
-    const d = evaluateMergeSafety(
-      withSignal('major-version-bump', ['left-pad 2.1.0 → 3.0.0'], {
-        prMayCarryBreakingMarker: false,
-      }),
-    );
-    expect(d.labels.addOnly).toEqual([]);
-  });
-
-  it('never proposes the label for a test-only signal — that would fire a spurious major', () => {
+  it('never writes a label for a test-only signal — that would fire a spurious major', () => {
     const d = evaluateMergeSafety(
       withSignal('material-test-changes', ['a.test.ts'], { prMayCarryBreakingMarker: true }),
     );
-    expect(d.labels.addOnly).toEqual([]);
+    expect(d.labels.add).toEqual([]);
     expect(d.needsCiRetitle).toBe(false);
-  });
-
-  it('never proposes the label for a CI-sensitive bump, even on a functional type', () => {
-    const d = evaluateMergeSafety(
-      withSignal('sensitive-package-bump', ['prettier 3.9.7 → 3.9.8'], {
-        prMayCarryBreakingMarker: true,
-      }),
-    );
-    expect(d.labels.addOnly).toEqual([]);
+    expect(d.needsBreakingDecision).toBe(false);
   });
 });
 

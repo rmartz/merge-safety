@@ -352,6 +352,28 @@ describe('gatherMergeSafetyFacts — the diff-derived breaking signals (#53)', (
     expect(facts.prBreakingDiffSignals).toEqual([]);
   });
 
+  it('records the explicit breaking decision separately from the diff (#82)', async () => {
+    const opts = {
+      git: gitWithPrDiff(''),
+      baseChecks: fakeChecks(),
+      requiredChecks: fakeRequired(),
+    };
+
+    const undecided = await gatherMergeSafetyFacts(meta, opts);
+    expect(undecided.prDeclaresBreaking).toBe(false);
+    expect(undecided.prDeclaresBreakingIsolated).toBe(false);
+
+    const labelled = await gatherMergeSafetyFacts({ ...meta, labels: ['Breaking Change'] }, opts);
+    expect(labelled.prDeclaresBreaking).toBe(true);
+
+    const bang = await gatherMergeSafetyFacts({ ...meta, title: 'feat!: drop node 18' }, opts);
+    expect(bang.prDeclaresBreaking).toBe(true);
+
+    const isolated = await gatherMergeSafetyFacts({ ...meta, labels: ['Breaking Isolated'] }, opts);
+    expect(isolated.prDeclaresBreakingIsolated).toBe(true);
+    expect(isolated.prDeclaresBreaking).toBe(false);
+  });
+
   it('records whether the title type could carry a `!` marker', async () => {
     const opts = {
       git: gitWithPrDiff(''),

@@ -56,6 +56,8 @@ const facts = (over: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts => ({
   baseBreakingSinceMergeBase: false,
   baseCiSinceMergeBase: false,
   prIsBreaking: false,
+  prDeclaresBreaking: false,
+  prDeclaresBreakingIsolated: false,
   prIsDocs: false,
   baseOnlyDocsSinceMergeBase: false,
   prIsCi: false,
@@ -187,6 +189,27 @@ describe('runEvaluate', () => {
     expect(removeLabel).toHaveBeenCalledWith(REPO, 5, 'merge conflict', expect.anything());
   });
 
+  it('fails an undecided dependency major bump and never writes `breaking change` (#82)', async () => {
+    ghCall.mockImplementation(async (primary: { argv: string[] }) =>
+      primary.argv.includes('view') ? prView() : '',
+    );
+    gatherMergeSafetyFacts.mockResolvedValue(
+      facts({
+        prIsBreaking: true,
+        prMayCarryBreakingMarker: true,
+        prBreakingDiffSignals: [{ kind: 'major-version-bump', detail: ['left-pad 2.1.0 → 3.0.0'] }],
+      }),
+    );
+    await runEvaluate(REPO, 5, evalArgs());
+    const check = postedCheck();
+    expect(check?.conclusion).toBe('failure');
+    expect(check?.output).toMatchObject({ title: 'Breaking decision required' });
+    // The decision is the human's: nothing is added, and neither decision label is removed.
+    expect(addLabels).not.toHaveBeenCalled();
+    expect(removeLabel).not.toHaveBeenCalledWith(REPO, 5, 'breaking change', expect.anything());
+    expect(removeLabel).not.toHaveBeenCalledWith(REPO, 5, 'breaking isolated', expect.anything());
+  });
+
   it('completes the invalidate step’s pending run in place rather than posting a sibling (#61)', async () => {
     ghCall.mockImplementation(async (primary: { argv: string[] }) => {
       if (primary.argv.includes('view')) return prView();
@@ -203,25 +226,6 @@ describe('runEvaluate', () => {
       status: 'completed',
       conclusion: 'success',
     });
-  });
-
-  it('applies the add-only `breaking change` label and never removes it (#53)', async () => {
-    ghCall.mockImplementation(async (primary: { argv: string[] }) =>
-      primary.argv.includes('view') ? prView() : '',
-    );
-    gatherMergeSafetyFacts.mockResolvedValue(
-      facts({
-        prIsBreaking: true,
-        prMayCarryBreakingMarker: true,
-        prBreakingDiffSignals: [
-          { kind: 'major-version-bump', detail: ['left-pad 2.1.0 \u2192 3.0.0'] },
-        ],
-      }),
-    );
-    await runEvaluate(REPO, 5, evalArgs());
-    // The PR is current, so no reconciled label applies — only the add-only one.
-    expect(addLabels).toHaveBeenCalledWith(REPO, 5, ['breaking change'], expect.anything());
-    expect(removeLabel).not.toHaveBeenCalledWith(REPO, 5, 'breaking change', expect.anything());
   });
 });
 

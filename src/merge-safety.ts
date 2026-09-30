@@ -70,12 +70,19 @@
  * (rmartz/dotfiles#1559). On a non-`ci` title there is no route, so the verdict
  * holds the PR and asks for the retitle rather than proposing a label that would
  * be stripped at merge.
+ *
+ * A fifth axis, the **breaking decision** (#82): a dependency major bump on a
+ * functional-typed PR is held until it carries an explicit `breaking change` or
+ * `breaking isolated` label. Static code can see the bump but not whether it
+ * reaches this package's consumers, so the check requires the decision rather than
+ * making it — see `breaking-decision.ts`.
  */
 
 import { firstLine } from './conventional-commits.js';
 
 export type { BaseCommit } from './reasons.js';
 import { evaluateStaleness } from './staleness.js';
+import { evaluateBreakingDecision } from './breaking-decision.js';
 import { withDetail, type BaseCommit } from './reasons.js';
 import { hasSignal, signalDetail, type BreakingDiffSignal } from './breaking-diff.js';
 
@@ -99,14 +106,9 @@ export function isEvaluablePrState(state: string): boolean {
 /** The label a PR carries to declare itself a broken-main fix, exempt from base health. */
 export const HOTFIX_LABEL = 'hotfix';
 
-/**
- * The `breaking change` label. Historically an *input* only — a human or an LLM
- * turn applies it and the check trusts it. Since #53 it is also an *output*: the
- * check adds it itself when the PR's own diff proves a breaking dependency major
- * bump. Add-only, never reconciled away (see {@link MergeSafetyDecision.labels}),
- * so an explicit human judgment is never silently reverted.
- */
-export const BREAKING_LABEL = 'breaking change';
+// The breaking-decision labels are inputs only — the check never writes them
+// (#82). Re-exported so `merge-safety.js` stays the single import surface.
+export { BREAKING_ISOLATED_LABEL, BREAKING_LABEL } from './breaking-decision.js';
 
 // Base health is a separate concern — and its own module since #53 pushed this
 // file past the 480-line `max-lines` cap. Re-exported so `merge-safety.js` stays
@@ -161,8 +163,16 @@ export interface MergeSafetyFacts {
   baseBreakingSinceMergeBase: boolean;
   /** A CI commit (`ci`-typed, or touching a CI path) landed on the base since merge-base. */
   baseCiSinceMergeBase: boolean;
-  /** The PR is itself a breaking change (title `!` marker or `breaking change` label). */
+  /**
+   * The PR is itself a breaking change for the **staleness** axis: title `!`,
+   * `breaking change` label, or any diff-derived signal. Deliberately not relaxed by
+   * `breaking isolated` — that label settles the release type, not base currency.
+   */
   prIsBreaking: boolean;
+  /** The PR explicitly declares itself breaking: title `!` marker or `breaking change` label. */
+  prDeclaresBreaking: boolean;
+  /** The PR carries `breaking isolated`: a reviewed major bump that does not reach consumers (#82). */
+  prDeclaresBreakingIsolated: boolean;
   /**
    * The PR title is a `docs:` / `docs(scope):` conventional commit. A non-breaking
    * docs PR is exempt from the base-breaking clause (a breaking base change only
@@ -242,9 +252,15 @@ export interface MergeSafetyDecision {
    */
   needsCiRetitle: boolean;
   /**
+   * The PR must carry exactly one explicit breaking decision — a dependency major
+   * bump with neither `breaking change` nor `breaking isolated`, or both at once
+   * (the breaking-decision axis, #82).
+   */
+  needsBreakingDecision: boolean;
+  /**
    * Short state phrase for the check-run title — the verdict at a glance. One of
    * `No update required` / `Update required` / `Merge conflict` / `Base CI
-   * failing` / `Retitle as a CI change` /
+   * failing` / `Retitle as a CI change` / `Breaking decision required` /
    * `Could not evaluate`. The check-run
    * *name* stays the stable `merge-safety` (so branch
    * protection can match it); this varies with the outcome instead.
@@ -259,13 +275,10 @@ export interface MergeSafetyDecision {
    *
    * `add` / `remove` are **reconciled**: the check owns `update required` and
    * `merge conflict` outright, adding the ones that apply and removing the rest.
-   *
-   * `addOnly` is **never removed**. It carries `breaking change`, which is also a
-   * human/agent input: the check adds it when the diff proves a breaking change,
-   * but never takes one away, so an explicit human judgment is never silently
-   * reverted (#53). A caller reconciling labels must not derive removals from it.
+   * It never writes `breaking change` / `breaking isolated` — those record a human
+   * decision the check only reads (#82).
    */
-  labels: { add: MergeSafetyLabel[]; remove: MergeSafetyLabel[]; addOnly: string[] };
+  labels: { add: MergeSafetyLabel[]; remove: MergeSafetyLabel[] };
 }
 
 /**
@@ -312,6 +325,11 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     ? !facts.prIsCi
     : false;
 
+  // The breaking-decision axis (#82): a dependency major bump must carry an explicit
+  // release-type decision. Listed after staleness for the same title/summary
+  // agreement as the retitle reason below.
+  const { needsBreakingDecision, reasons: decisionReasons } = evaluateBreakingDecision(facts);
+
   // Listed last so a PR that is also stale or conflicting leads with the reason its
   // title names — the summary takes reasons[0], and the two must agree.
   if (needsCiRetitle) {
@@ -325,12 +343,13 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
       ),
     );
   }
+  reasons.push(...decisionReasons);
 
   // Split the blocking verdict by what clears it (#58). Staleness alone is routine
   // and a branch update fixes it, so it holds the PR as `pending` without reading as
   // broken; everything else needs a person (or the base CI) to act, so it
   // stays `failure`, including staleness combined with any of those.
-  const needsAction = facts.hasConflict || baseUnhealthy || needsCiRetitle;
+  const needsAction = facts.hasConflict || baseUnhealthy || needsCiRetitle || needsBreakingDecision;
   const conclusion: MergeSafetyConclusion = needsAction
     ? 'failure'
     : needsUpdate
@@ -355,26 +374,14 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
         ? 'Update required'
         : needsCiRetitle
           ? 'Retitle as a CI change'
-          : 'No update required';
+          : needsBreakingDecision
+            ? 'Breaking decision required'
+            : 'No update required';
 
   const add: MergeSafetyLabel[] = [];
   if (needsUpdate) add.push('update required');
   if (facts.hasConflict) add.push('merge conflict');
   const remove = MERGE_SAFETY_LABELS.filter((l) => !add.includes(l));
-
-  // `breaking change` is proposed only for a dependency **major** bump on a
-  // functional-typed PR — the one diff signal that is breaking in the sense `!`
-  // means, on the one title shape where the label survives to become a `!`
-  // (#1559). Deliberately NOT proposed for the other two signals: a CI-sensitive
-  // bump is answered by the `ci` retitle above, and a material test change is a
-  // staleness signal, not a public-API break — labelling either would stamp `!`
-  // on a functional-typed PR and fire a spurious semantic-release MAJOR.
-  const addOnly: string[] = [];
-  if (
-    hasSignal(facts.prBreakingDiffSignals, 'major-version-bump') &&
-    facts.prMayCarryBreakingMarker
-  )
-    addOnly.push(BREAKING_LABEL);
 
   return {
     conclusion,
@@ -382,10 +389,11 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
     hasConflict: facts.hasConflict,
     baseUnhealthy,
     needsCiRetitle,
+    needsBreakingDecision,
     title,
     reasons,
     summary,
-    labels: { add, remove, addOnly },
+    labels: { add, remove },
   };
 }
 
@@ -405,9 +413,10 @@ export function errorMergeSafetyDecision(message: string): MergeSafetyDecision {
     hasConflict: false,
     baseUnhealthy: false,
     needsCiRetitle: false,
+    needsBreakingDecision: false,
     title: 'Could not evaluate',
     reasons: [message],
     summary: `Could not evaluate merge safety: ${message}`,
-    labels: { add: [], remove: [], addOnly: [] },
+    labels: { add: [], remove: [] },
   };
 }

@@ -14,6 +14,8 @@ function staleFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts
     baseBreakingSinceMergeBase: false,
     baseCiSinceMergeBase: false,
     prIsBreaking: false,
+    prDeclaresBreaking: false,
+    prDeclaresBreakingIsolated: false,
     prIsDocs: false,
     baseOnlyDocsSinceMergeBase: false,
     prIsCi: false,
