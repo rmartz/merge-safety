@@ -26,7 +26,6 @@ function staleFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts
     overlappingFiles: [],
     failingBaseChecks: [],
     prBreakingDiffSignals: [],
-    prMayCarryBreakingMarker: false,
     ...overrides,
   };
 }

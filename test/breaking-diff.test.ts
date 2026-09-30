@@ -4,8 +4,6 @@ import {
   majorVersionBumps,
   materialTestChanges,
   sensitivePackageBumps,
-  hasSignal,
-  signalDetail,
 } from '../src/breaking-diff.js';
 
 /** Assemble a unified diff from per-file bodies, as `git diff --unified=0` emits it. */
@@ -181,13 +179,6 @@ describe('breakingDiffSignals', () => {
       'sensitive-package-bump',
       'material-test-changes',
     ]);
-    expect(hasSignal(signals, 'sensitive-package-bump')).toBe(true);
-    expect(signalDetail(signals, 'material-test-changes')).toEqual(['a.test.ts']);
-  });
-
-  it('reports no detail for a kind that did not fire', () => {
-    const signals = breakingDiffSignals(diff(npmBump('left-pad', '2.1.0', '3.0.0')));
-    expect(hasSignal(signals, 'material-test-changes')).toBe(false);
-    expect(signalDetail(signals, 'material-test-changes')).toEqual([]);
+    expect(signals.find((s) => s.kind === 'material-test-changes')?.detail).toEqual(['a.test.ts']);
   });
 });

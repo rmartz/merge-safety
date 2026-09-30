@@ -7,7 +7,8 @@
  * merge-gating* check depend on a non-deterministic producer, and it failed in the
  * **permissive** direction: no `/review` run, or a reviewer who misread the diff,
  * and the PR was evaluated as non-breaking. These detectors are pure functions over
- * a diff, so the check derives the fact itself; the label remains an accepted input.
+ * a diff, so the check derives the fact itself; the title `!` marker is the only
+ * declared input alongside it — the label is never read.
  *
  * Ported from `claude/scripts/breaking_change.py` in `rmartz/dotfiles`
  * (`has_major_version_bump` / `has_sensitive_package_bump` /
@@ -217,8 +218,8 @@ export function materialTestChanges(diffText: string): string[] {
 
 /**
  * Every breaking signal the PR's own diff carries, in a stable order. An empty
- * array means the diff says nothing — the title `!` marker and the `breaking change`
- * label remain independent inputs the caller folds in.
+ * array means the diff says nothing — the title `!` marker is the only declared
+ * input, and the caller folds it in.
  */
 export function breakingDiffSignals(diffText: string): BreakingDiffSignal[] {
   const signals: BreakingDiffSignal[] = [];
@@ -229,17 +230,4 @@ export function breakingDiffSignals(diffText: string): BreakingDiffSignal[] {
   const tests = materialTestChanges(diffText);
   if (tests.length) signals.push({ kind: 'material-test-changes', detail: tests });
   return signals;
-}
-
-/** True when `signals` contains a signal of `kind`. */
-export function hasSignal(signals: readonly BreakingDiffSignal[], kind: BreakingDiffKind): boolean {
-  return signals.some((s) => s.kind === kind);
-}
-
-/** The detail list of `kind`, or `[]` when that detector did not fire. */
-export function signalDetail(
-  signals: readonly BreakingDiffSignal[],
-  kind: BreakingDiffKind,
-): readonly string[] {
-  return signals.find((s) => s.kind === kind)?.detail ?? [];
 }
