@@ -2,8 +2,8 @@
  * Inlined `gh` transport + label helpers — PORTED FROM `@rmartz/github@0.4.2`.
  *
  * Inlined (rather than depended on) to keep this package zero-runtime-dependency,
- * like `rmartz/repo-hygiene` (ai-tools#247, docs/migration.md). The four functions
- * the `ai-merge-safety` bin needs are copied here verbatim from that version:
+ * like `rmartz/repo-hygiene`. The four functions
+ * the `merge-safety` bin needs are copied here verbatim from that version:
  *   - `ghCall`            — REST-first + GraphQL-fallback `gh` transport with
  *                           bounded retry/backoff and rate-limit soft-fail.
  *   - `resolveRepoTarget` — explicit `--repo` → `GH_REPO` → cwd `gh repo view`.

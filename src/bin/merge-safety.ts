@@ -37,8 +37,8 @@ export interface Args {
   baseRef: string;
   /**
    * The consumer's caller workflow filename that `invalidate` re-dispatches per PR
-   * (issue #247's dispatch-target wrinkle: a reusable workflow's fan-out targets
-   * the *caller* file, not this reusable file). Defaults to the conventional name.
+   * (a reusable workflow's fan-out must target the *caller* file, not this
+   * reusable file). Defaults to the conventional name.
    */
   workflow: string;
   cwd?: string;
@@ -55,8 +55,8 @@ export interface Args {
 
 function usage(): never {
   console.error(
-    'usage: ai-merge-safety evaluate --pr <n> [--json] [--repo <o/r>] [--base <ref>] [--cwd <path>]\n' +
-      '       ai-merge-safety invalidate [--base-branch <name>] [--workflow <file>] [--exclude <n>]\n' +
+    'usage: merge-safety evaluate --pr <n> [--json] [--repo <o/r>] [--base <ref>] [--cwd <path>]\n' +
+      '       merge-safety invalidate [--base-branch <name>] [--workflow <file>] [--exclude <n>]\n' +
       '                                   [--repo <o/r>] [--cwd <path>]',
   );
   process.exit(2);
@@ -372,7 +372,7 @@ async function main(): Promise<void> {
 }
 
 // Run only when invoked directly as the CLI entry. realpathSync resolves the npm
-// bin symlink (node_modules/.bin/ai-merge-safety → dist/bin/merge-safety.js) so the
+// bin symlink (node_modules/.bin/merge-safety → dist/bin/merge-safety.js) so the
 // comparison holds for the installed CLI, while an import (tests) does not match.
 function isDirectRun(): boolean {
   const entry = process.argv[1];

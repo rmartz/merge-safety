@@ -3,7 +3,7 @@
  *
  * Encodes the package's stable public contract: the `merge-safety` check-run
  * name and the CLI command surface. The evaluate/invalidate implementation
- * (`merge-safety.ts` + `merge-safety-facts.ts` and the `ai-merge-safety` bin)
+ * (`merge-safety.ts` + `merge-safety-facts.ts` and the `merge-safety` bin)
  * lives alongside it; this module is intentionally the narrow, frozen surface
  * consumers and the reusable workflow depend on.
  */
@@ -21,7 +21,7 @@
 export const MERGE_SAFETY_CHECK_NAME = 'merge-safety';
 
 /**
- * The two operations the `ai-merge-safety` CLI dispatches:
+ * The two operations the `merge-safety` CLI dispatches:
  * - `evaluate` — gather base-currency + breaking-change + conflict facts for one
  *   PR, post the `merge-safety` check-run, and reconcile the update-required /
  *   merge-conflict labels.

@@ -7,12 +7,13 @@ facts), posted as the `merge-safety` check-run, plus the **reusable workflow**
 pinned by version and kept current by Dependabot. See [README.md](README.md) and
 the [documentation](docs/index.md).
 
-It was extracted from `@rmartz/pr-review` per **ai-tools#247**, mirroring the
-`rmartz/repo-hygiene` split. The `evaluate` / `invalidate` implementation and the
-`ai-merge-safety` bin now live in `src/` alongside the package's stable public
-contract (shipped in v0.1.0). The record of how it was extracted, the (now-locked)
-layer-0 dependency decisions, and the ai-tools-side cutover this repo coordinates
-are in [docs/migration.md](docs/migration.md).
+The `evaluate` / `invalidate` implementation and the `merge-safety` bin live in
+`src/` alongside the package's stable public contract. The package has **zero
+runtime dependencies**: the `gh` transport (`src/lib/github.ts`, ported from
+`@rmartz/github`) and the `boundedRun` subprocess wrapper
+(`src/lib/bounded-subprocess.ts`, from `@rmartz/agent-runtime`) are inlined rather
+than depended on. When you touch `src/lib/github.ts`, check upstream
+`@rmartz/github` for transport/rate-limit fixes and port them across.
 
 ## The check-run name is a fleet contract
 
