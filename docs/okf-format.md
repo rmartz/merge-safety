@@ -73,5 +73,5 @@ Conformance is gated by this repo's **Repo Hygiene** workflow, which runs the
 `docs/` tree. Run the same checks locally against a built or installed CLI:
 
 ```bash
-ai-repo-hygiene okf okf-index --check --config .repo-hygiene.yml
+repo-hygiene okf okf-index --check --config .repo-hygiene.yml
 ```
