@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import {
   MERGE_SAFETY_CHECK_NAME,
@@ -10,6 +11,13 @@ describe('merge-safety package contract', () => {
     // This name is a fleet contract (see docs/check-run-contract.md); a change
     // here is a coordinated fleet migration, so the test guards it deliberately.
     expect(MERGE_SAFETY_CHECK_NAME).toBe('merge-safety');
+  });
+
+  it('publishes the CLI as the `merge-safety` bin', () => {
+    // The reusable workflow invokes the CLI by this name, so renaming the bin is a
+    // breaking change for every consumer pinned to it.
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(pkg.bin).toEqual({ 'merge-safety': './dist/bin/merge-safety.js' });
   });
 
   it('exposes exactly the evaluate/invalidate commands', () => {

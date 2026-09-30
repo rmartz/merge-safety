@@ -4,11 +4,9 @@ import tsparser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 
 /**
- * Flat ESLint config for the standalone merge-safety package. Descended from the
- * ai-tools monorepo config (and its repo-hygiene sibling): the layer-boundary
- * model is gone (no cross-package layers here), but the code-style rules —
- * promoted from CLAUDE.md prose to static enforcement — are kept intact so they
- * hold at every model tier instead of relying on a reviewer's eye.
+ * Flat ESLint config for the merge-safety package. The code-style rules —
+ * promoted from AGENTS.md prose to static enforcement — hold at every model tier
+ * instead of relying on a reviewer's eye.
  */
 
 const tsParserOptions = { sourceType: 'module', ecmaVersion: 2023 };

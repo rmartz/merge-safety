@@ -26,7 +26,7 @@
     }
   },
   "bin": {
-    "ai-merge-safety": "./dist/bin/merge-safety.js"
+    "merge-safety": "./dist/bin/merge-safety.js"
   },
   "files": [
     "dist"
