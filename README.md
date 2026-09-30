@@ -15,11 +15,8 @@ is:
    check named exactly `merge-safety`; see
    [docs/check-run-contract.md](docs/check-run-contract.md).
 
-> **Status: released.** `v0.1.0` ships the full `evaluate` / `invalidate`
-> implementation and the `ai-merge-safety` CLI — the package is functional and
-> ready to adopt. It was split out of `@rmartz/pr-review` per
-> [ai-tools#247](https://github.com/rmartz/ai-tools/issues/247); see
-> [docs/migration.md](docs/migration.md) for the record of how it was extracted.
+> **Status: released.** The package ships the full `evaluate` / `invalidate`
+> implementation as the `merge-safety` CLI and is ready to adopt.
 
 ## Using it in a consuming repo
 
