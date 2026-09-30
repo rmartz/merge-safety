@@ -1,4 +1,10 @@
 version: 2
+# Cooldown: since 2026-07-14 Dependabot waits 3 days after a release before
+# proposing it, even with no `cooldown` configured. Third-party dependencies keep
+# that default (security updates are never delayed by it). Only first-party
+# releases (`rmartz/*` actions and reusable workflows) are exempt: they're
+# published from our own repos with provenance, so the wait adds no supply-chain
+# protection and only holds fixes back from the fleet.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -7,6 +13,11 @@ updates:
       # workflow through a pinned release tag, and this ecosystem is what bumps
       # that pin. Daily keeps the dogfood within a day of the latest release.
       interval: daily
+    cooldown:
+      # Explicit, so declaring the block can't change the third-party default.
+      default-days: 3
+      exclude:
+        - 'rmartz/*'
     commit-message:
       prefix: chore
       include: scope
