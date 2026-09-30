@@ -49,11 +49,11 @@ deliberate cross-repo project, never a refactor.
 
 The `merge-safety` check-run ends in one of three states:
 
-| State       | Check-run                    | Commit status | Title                                                                               | When                                                                              |
-| ----------- | ---------------------------- | ------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **success** | `completed` / `success`      | `success`     | `No update required`                                                                | Safe to merge as-is.                                                              |
-| **pending** | `in_progress`, no conclusion | `pending`     | `Update required`                                                                   | The PR is stale and nothing else is wrong. A branch update clears it.             |
-| **failure** | `completed` / `failure`      | `failure`     | `Merge conflict`, `Base CI failing`, `Retitle as a CI change`, `Could not evaluate` | Something a branch update alone cannot fix, including staleness combined with it. |
+| State       | Check-run                    | Commit status | Title                                                     | When                                                                              |
+| ----------- | ---------------------------- | ------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **success** | `completed` / `success`      | `success`     | `No update required`                                      | Safe to merge as-is.                                                              |
+| **pending** | `in_progress`, no conclusion | `pending`     | `Update required`                                         | The PR is stale and nothing else is wrong. A branch update clears it.             |
+| **failure** | `completed` / `failure`      | `failure`     | `Merge conflict`, `Base CI failing`, `Could not evaluate` | Something a branch update alone cannot fix, including staleness combined with it. |
 
 The commit status carries the title as its description, cut to GitHub's
 140-character limit.
