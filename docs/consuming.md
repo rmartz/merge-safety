@@ -105,14 +105,12 @@ jobs:
 > the merge-safety verdict matters most. `pull_request_target` runs in the base
 > context and needs no merge commit, so it fires even when the PR is unmergeable.
 > This is safe here because the reusable `evaluate` job checks out the **base ref**,
-> fetches the PR head only as git _data_, and runs the published `ai-merge-safety`
+> fetches the PR head only as git _data_, and runs the published `merge-safety`
 > CLI — it never executes PR-authored code. (One trade-off: under
 > `pull_request_target` the caller definition is read from the base branch, so a PR
 > that edits this workflow only takes effect once merged — fine for a
-> Dependabot-owned pin.) Greenfield bootstrap seeding is being moved to
-> `pull_request_target` in
-> [ai-tools#272](https://github.com/rmartz/ai-tools/issues/272); repos already seeded
-> with `pull_request` should switch their caller now.
+> Dependabot-owned pin.) Repos whose
+> caller still triggers on `pull_request` should switch it to `pull_request_target`.
 
 > **Migrating an existing `pull_request` caller? The switch PR wedges itself — clear
 > it with one `workflow_dispatch`.** On a repo where `merge-safety` is already a

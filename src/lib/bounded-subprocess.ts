@@ -19,9 +19,8 @@ export interface BoundedOptions {
  * Run a command with a hard wall-clock timeout, killing the whole process
  * group on expiry so no orphaned children survive.
  *
- * Inlined from `@rmartz/agent-runtime` per the extraction migration
- * (ai-tools#247, docs/migration.md) — the same ~67-line helper `rmartz/repo-hygiene`
- * vendored — so merge-safety's fact gathering can shell out to `git` without a
+ * Inlined from `@rmartz/agent-runtime` — the same ~67-line helper
+ * `rmartz/repo-hygiene` vendored — so merge-safety's fact gathering can shell out to `git` without a
  * dependency edge on agent-runtime. Layer-0 foundation used by any caller that
  * shells out to a long-running tool.
  */

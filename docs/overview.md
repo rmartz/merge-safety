@@ -13,7 +13,7 @@ It is the gate that lets a repo use GitHub's native auto-merge safely: a PR hold
 auto-merge until its `merge-safety` check clears, and a change to the base branch
 re-holds every other open PR until each re-clears.
 
-It ships as one CLI, `ai-merge-safety`, with two operations that the
+It ships as one CLI, `merge-safety`, with two operations that the
 [reusable workflow](consuming.md) dispatches by event:
 
 ## `evaluate` — one PR
@@ -126,5 +126,3 @@ goes red, and releasing them when it goes green again. See
   the `merge-safety` check-run name.
 - **[Setting up merge-safety in a consuming repo](consuming.md)** — the caller
   workflow and its permissions.
-- **[The extraction migration](migration.md)** — how it was split out of
-  `@rmartz/pr-review` and the locked layer-0 dependency decisions behind the CLI.

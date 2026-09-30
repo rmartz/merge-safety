@@ -28,9 +28,7 @@ name: merge-safety (reusable)
 # it is never renamed here. See docs/check-run-contract.md.
 #
 # The two jobs install and invoke the published `@rmartz/merge-safety` CLI
-# (`ai-merge-safety`), which shipped its full `evaluate` / `invalidate`
-# implementation in v0.1.0 (extracted from `@rmartz/pr-review`, ai-tools#247).
-# See docs/migration.md for how it was extracted.
+# (`merge-safety`) and dispatch its `evaluate` / `invalidate` operations.
 
 on:
   workflow_call:
@@ -149,7 +147,7 @@ jobs:
       # registry is pinned explicitly so an ambient `@rmartz:registry` mapping
       # (e.g. a GitHub Packages one) can't redirect it: versions after 0.6.0
       # exist only on npmjs.
-      - name: Install ai-merge-safety
+      - name: Install merge-safety
         run: >-
           npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
           --@rmartz:registry=https://registry.npmjs.org/
@@ -157,7 +155,7 @@ jobs:
       # (workflow_dispatch) path checks out the base and would otherwise lack it.
       - run: git fetch --quiet origin "${BASE_REF}" "pull/${PR_NUMBER}/head"
       - run: >-
-          ai-merge-safety evaluate --pr "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}"
+          merge-safety evaluate --pr "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}"
           --base "origin/${BASE_REF}"
 
   invalidate:
@@ -233,10 +231,10 @@ jobs:
             fi
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - name: Install ai-merge-safety
+      - name: Install merge-safety
         run: >-
           npm install -g "@rmartz/merge-safety@${{ steps.ms.outputs.version }}"
           --@rmartz:registry=https://registry.npmjs.org/
       - run: >-
-          ai-merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"
+          merge-safety invalidate --repo "${GITHUB_REPOSITORY}" --workflow "${CALLER_WORKFLOW}"
           --base-branch "${BASE_BRANCH}"

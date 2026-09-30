@@ -23,7 +23,7 @@ contract** that three separate things depend on by string:
    no `pull_request` run for an unmergeable PR, so the check is never posted (see
    [Setting up merge-safety in a consuming repo](consuming.md)).
 2. **The auto-merge gate.** The fleet's auto-merge path gates on
-   `goldenGateChecks = ['merge-safety']` (in ai-tools' `golden-config.ts`). The
+   `goldenGateChecks = ['merge-safety']`. The
    verifier looks up the check by that name; a mismatch means auto-merge either
    never engages or engages without the safety verdict.
 3. **The gate floor.** The bootstrap/golden config that seeds each consumer's

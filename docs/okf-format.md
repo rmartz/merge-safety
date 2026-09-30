@@ -39,8 +39,8 @@ tags: [merge-safety, ci] # optional
 ---
 ```
 
-This repo runs the **code-documentation flavour** of the `okf` check (the same
-one `ai-tools` uses), so it is stricter than the open OKF spec in two ways:
+This repo runs the **code-documentation flavour** of the `okf` check, so it
+is stricter than the open OKF spec in two ways:
 
 - **`type`** is required and constrained to a curated vocabulary — **`Skill`**,
   **`Script`**, **`Library`**, **`Design`**, plus **`Reference`** for concept /
@@ -73,5 +73,5 @@ Conformance is gated by this repo's **Repo Hygiene** workflow, which runs the
 `docs/` tree. Run the same checks locally against a built or installed CLI:
 
 ```bash
-ai-repo-hygiene okf okf-index --check --config .repo-hygiene.yml
+repo-hygiene okf okf-index --check --config .repo-hygiene.yml
 ```
