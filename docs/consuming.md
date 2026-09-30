@@ -15,14 +15,14 @@ the _intersection_ of the caller-granted and workflow-declared permissions.
 
 > **Prerequisite — the labels merge-safety manages must already exist in the repo.**
 > `evaluate` reconciles two labels on each PR — **`update required`** and
-> **`merge conflict`** — and both reads **and writes** a **`breaking change`**
-> label: it is an input (applying it by hand forces the breaking verdict) and,
-> since #53, an add-only output the check applies itself when the PR's diff proves
-> a dependency major bump on a functional-typed PR. Label reconciliation goes
+> **`merge conflict`**. It reads a PR's breaking status from the title's `!`
+> alone, so a repo relies on pr-policy's title check to keep that `!` in step
+> with the `breaking change` label and to require it for a dependency major bump.
+> Label reconciliation goes
 > through `gh` and **soft-fails silently**: if these labels do not exist in the
 > repo, the check-run still posts its verdict but the human-facing labels never
 > appear, with no error surfaced. Create them before adopting —
-> `ai-ensure-labels` seeds the standard roster (which includes all three), or
+> `ai-ensure-labels` seeds the standard roster (which includes both), or
 > create them by hand — so the labels track the verdict from the first run.
 >
 > **Stacked children are only re-evaluated when their parent moves if the caller

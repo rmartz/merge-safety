@@ -30,7 +30,6 @@ const CI_SUBJECT_RE = /^ci(\([^)]*\))?!?:/;
 /** A `docs`-typed conventional commit (with or without a scope / `!`). */
 const DOCS_SUBJECT_RE = /^docs(\([^)]*\))?!?:/;
 
-
 /** The first line of a multi-line message — its subject. */
 export function firstLine(message: string): string {
   return message.split('\n', 1)[0] ?? '';
@@ -65,4 +64,3 @@ export function isCiTitle(title: string): boolean {
 export function isDocsTitle(title: string): boolean {
   return DOCS_SUBJECT_RE.test(title.trim());
 }
-
