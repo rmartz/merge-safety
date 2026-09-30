@@ -123,9 +123,9 @@ describe('gatherMergeSafetyFacts', () => {
     expect(facts.overlappingFiles).toEqual([]);
   });
 
-  it('honors the breaking-change label and a CONFLICTING mergeable state', async () => {
+  it('reads prIsBreaking from the title `!` and honors a CONFLICTING mergeable state', async () => {
     const facts = await gatherMergeSafetyFacts(
-      { ...meta, labels: ['Breaking Change'], mergeable: 'conflicting' },
+      { ...meta, title: 'feat!: drop node 18', mergeable: 'conflicting' },
       { git: cleanStaleGit(), baseChecks: fakeChecks(), requiredChecks: fakeRequired() },
     );
 
@@ -342,27 +342,13 @@ describe('gatherMergeSafetyFacts — the diff-derived breaking signals (#53)', (
     expect(facts.prBreakingDiffSignals).toEqual([]);
   });
 
-  it('keeps the label as an independent input — it still forces prIsBreaking alone', async () => {
+  it('ignores the `breaking change` label — only the title `!` declares a break (#82)', async () => {
     const facts = await gatherMergeSafetyFacts(
       { ...meta, labels: ['Breaking Change'] },
       { git: gitWithPrDiff(''), baseChecks: fakeChecks(), requiredChecks: fakeRequired() },
     );
 
-    expect(facts.prIsBreaking).toBe(true);
-    expect(facts.prBreakingDiffSignals).toEqual([]);
-  });
-
-  it('records whether the title type could carry a `!` marker', async () => {
-    const opts = {
-      git: gitWithPrDiff(''),
-      baseChecks: fakeChecks(),
-      requiredChecks: fakeRequired(),
-    };
-    const functional = await gatherMergeSafetyFacts({ ...meta, title: 'fix: repair' }, opts);
-    expect(functional.prMayCarryBreakingMarker).toBe(true);
-
-    const nonFunctional = await gatherMergeSafetyFacts({ ...meta, title: 'chore: tidy' }, opts);
-    expect(nonFunctional.prMayCarryBreakingMarker).toBe(false);
+    expect(facts.prIsBreaking).toBe(false);
   });
 
   it('throws when the PR patch cannot be read — an ungatherable PR is never green', async () => {

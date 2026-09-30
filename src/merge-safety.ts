@@ -56,20 +56,12 @@
  * not: a red deploy under green Actions is likelier an external/environmental
  * fault no code change can fix, so it must not wedge the whole merge queue.
  *
- * **The breaking verdict is self-derived** (#53). `prIsBreaking` was once read
- * only from the PR title's `!` marker or a `breaking change` label an LLM turn
- * applies — a required, merge-gating check with a read-dependency on a
- * non-deterministic producer, failing *permissively* when that turn never ran.
- * It is now also derived from the PR's own diff (`breaking-diff.ts`); the title
- * and label remain accepted inputs, so this is additive and never less strict.
- *
- * A fourth axis falls out of that: a **CI-sensitive package bump** (a linter or
- * formatter whose output gates CI) must force every in-flight sibling to re-test
- * under it once merged, and only the merged subject can carry that signal — a
- * `ci` prefix, or a `!` that `merge-pr.py` stamps on functional types alone
- * (rmartz/dotfiles#1559). On a non-`ci` title there is no route, so the verdict
- * holds the PR and asks for the retitle rather than proposing a label that would
- * be stripped at merge.
+ * **The breaking verdict reads the title and the diff, never a label** (#82).
+ * `prIsBreaking` is the PR title's `!` marker or a breaking signal in the PR's own
+ * diff (`breaking-diff.ts`, #53). Whether a PR *should* carry `!` — the
+ * `breaking change` label, a dependency major bump, a linter bump's `ci` type — is
+ * title policy, enforced by pr-policy's title check; this check only consumes the
+ * resulting title and never reads or writes a label for it.
  */
 
 import { firstLine } from './conventional-commits.js';
@@ -77,7 +69,7 @@ import { firstLine } from './conventional-commits.js';
 export type { BaseCommit } from './reasons.js';
 import { evaluateStaleness } from './staleness.js';
 import { withDetail, type BaseCommit } from './reasons.js';
-import { hasSignal, signalDetail, type BreakingDiffSignal } from './breaking-diff.js';
+import type { BreakingDiffSignal } from './breaking-diff.js';
 
 /** Labels the check drives on a PR. Structural (`as const`) per repo convention. */
 export const MERGE_SAFETY_LABELS = ['update required', 'merge conflict'] as const;
@@ -98,15 +90,6 @@ export function isEvaluablePrState(state: string): boolean {
 
 /** The label a PR carries to declare itself a broken-main fix, exempt from base health. */
 export const HOTFIX_LABEL = 'hotfix';
-
-/**
- * The `breaking change` label. Historically an *input* only — a human or an LLM
- * turn applies it and the check trusts it. Since #53 it is also an *output*: the
- * check adds it itself when the PR's own diff proves a breaking dependency major
- * bump. Add-only, never reconciled away (see {@link MergeSafetyDecision.labels}),
- * so an explicit human judgment is never silently reverted.
- */
-export const BREAKING_LABEL = 'breaking change';
 
 // Base health is a separate concern — and its own module since #53 pushed this
 // file past the 480-line `max-lines` cap. Re-exported so `merge-safety.js` stays
@@ -129,7 +112,6 @@ export {
   isCiTitle,
   isDocsCommitMessage,
   isDocsTitle,
-  mayCarryBreakingMarker,
 } from './conventional-commits.js';
 
 /** The PR's changed files that also changed on the base, preserving PR order. */
@@ -161,7 +143,7 @@ export interface MergeSafetyFacts {
   baseBreakingSinceMergeBase: boolean;
   /** A CI commit (`ci`-typed, or touching a CI path) landed on the base since merge-base. */
   baseCiSinceMergeBase: boolean;
-  /** The PR is itself a breaking change (title `!` marker or `breaking change` label). */
+  /** The PR is itself a breaking change: its title's `!` marker or a diff-derived signal. */
   prIsBreaking: boolean;
   /**
    * The PR title is a `docs:` / `docs(scope):` conventional commit. A non-breaking
@@ -204,17 +186,11 @@ export interface MergeSafetyFacts {
   /**
    * The breaking signals the PR's **own diff** carries (#53) — a dependency major
    * bump, a CI-sensitive linter/formatter version change, or material changes to
-   * existing tests. These feed `prIsBreaking` alongside the title marker and the
-   * label, so the verdict no longer depends on an LLM turn having run.
+   * existing tests. These feed `prIsBreaking` alongside the title marker, so a PR
+   * that changes something risky is re-tested against a moved base even when its
+   * title is unmarked.
    */
   prBreakingDiffSignals: readonly BreakingDiffSignal[];
-  /**
-   * The PR title's conventional type is functional (`feat`/`fix`/`perf`/`revert`),
-   * so a `breaking change` label on it would survive `merge-pr.py`'s #1559 check
-   * and become a `!` on the squashed subject. False for `chore`/`ci`/`docs`/… —
-   * where a label would be stripped at merge and the signal silently lost.
-   */
-  prMayCarryBreakingMarker: boolean;
 }
 
 /**
@@ -236,16 +212,9 @@ export interface MergeSafetyDecision {
   /** Blocked because the base's CI is failing and this PR is not a hotfix (the base-health axis). */
   baseUnhealthy: boolean;
   /**
-   * The PR bumps a CI-sensitive linter/formatter but is not `ci`-typed, so nothing
-   * will force in-flight siblings to re-test under it after merge (the retitle axis,
-   * #53). See the reason text for why a `breaking change` label cannot substitute.
-   */
-  needsCiRetitle: boolean;
-  /**
    * Short state phrase for the check-run title — the verdict at a glance. One of
    * `No update required` / `Update required` / `Merge conflict` / `Base CI
-   * failing` / `Retitle as a CI change` /
-   * `Could not evaluate`. The check-run
+   * failing` / `Could not evaluate`. The check-run
    * *name* stays the stable `merge-safety` (so branch
    * protection can match it); this varies with the outcome instead.
    */
@@ -259,13 +228,8 @@ export interface MergeSafetyDecision {
    *
    * `add` / `remove` are **reconciled**: the check owns `update required` and
    * `merge conflict` outright, adding the ones that apply and removing the rest.
-   *
-   * `addOnly` is **never removed**. It carries `breaking change`, which is also a
-   * human/agent input: the check adds it when the diff proves a breaking change,
-   * but never takes one away, so an explicit human judgment is never silently
-   * reverted (#53). A caller reconciling labels must not derive removals from it.
    */
-  labels: { add: MergeSafetyLabel[]; remove: MergeSafetyLabel[]; addOnly: string[] };
+  labels: { add: MergeSafetyLabel[]; remove: MergeSafetyLabel[] };
 }
 
 /**
@@ -299,38 +263,11 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
   const { needsUpdate, reasons: stalenessReasons } = evaluateStaleness(facts);
   reasons.push(...stalenessReasons);
 
-  // The retitle axis (#53). A CI-sensitive linter/formatter bump must force every
-  // in-flight sibling to re-test under the new tool version after this merges, and
-  // that signal can only travel on the merged subject: either a `ci` prefix or a
-  // `!` marker. The `!` route is unavailable here — `merge-pr.py` stamps `!` only
-  // on a functional type and *strips* a `breaking change` label off anything else
-  // (#1559), and the fleet's answer for exactly this case is the `ci` type, not the
-  // label. So a non-`ci` title is a dead end no label can rescue: fail, and say so.
-  // Unlike the staleness clauses this is not gated on `!isCurrent` — merging a
-  // current PR under the wrong title loses the signal just as permanently.
-  const needsCiRetitle = hasSignal(facts.prBreakingDiffSignals, 'sensitive-package-bump')
-    ? !facts.prIsCi
-    : false;
-
-  // Listed last so a PR that is also stale or conflicting leads with the reason its
-  // title names — the summary takes reasons[0], and the two must agree.
-  if (needsCiRetitle) {
-    reasons.push(
-      withDetail(
-        'This PR changes a CI-sensitive package version, which can redden the format/lint ' +
-          'gate on PRs that never touched the bumped file. Retitle it with the `ci` type ' +
-          '(e.g. `ci(deps): …`) so merged siblings are forced to re-test under it — a ' +
-          '`breaking change` label cannot carry this signal on a non-functional type:',
-        signalDetail(facts.prBreakingDiffSignals, 'sensitive-package-bump'),
-      ),
-    );
-  }
-
   // Split the blocking verdict by what clears it (#58). Staleness alone is routine
   // and a branch update fixes it, so it holds the PR as `pending` without reading as
   // broken; everything else needs a person (or the base CI) to act, so it
   // stays `failure`, including staleness combined with any of those.
-  const needsAction = facts.hasConflict || baseUnhealthy || needsCiRetitle;
+  const needsAction = facts.hasConflict || baseUnhealthy;
   const conclusion: MergeSafetyConclusion = needsAction
     ? 'failure'
     : needsUpdate
@@ -353,39 +290,22 @@ export function evaluateMergeSafety(facts: MergeSafetyFacts): MergeSafetyDecisio
       ? 'Base CI failing'
       : needsUpdate
         ? 'Update required'
-        : needsCiRetitle
-          ? 'Retitle as a CI change'
-          : 'No update required';
+        : 'No update required';
 
   const add: MergeSafetyLabel[] = [];
   if (needsUpdate) add.push('update required');
   if (facts.hasConflict) add.push('merge conflict');
   const remove = MERGE_SAFETY_LABELS.filter((l) => !add.includes(l));
 
-  // `breaking change` is proposed only for a dependency **major** bump on a
-  // functional-typed PR — the one diff signal that is breaking in the sense `!`
-  // means, on the one title shape where the label survives to become a `!`
-  // (#1559). Deliberately NOT proposed for the other two signals: a CI-sensitive
-  // bump is answered by the `ci` retitle above, and a material test change is a
-  // staleness signal, not a public-API break — labelling either would stamp `!`
-  // on a functional-typed PR and fire a spurious semantic-release MAJOR.
-  const addOnly: string[] = [];
-  if (
-    hasSignal(facts.prBreakingDiffSignals, 'major-version-bump') &&
-    facts.prMayCarryBreakingMarker
-  )
-    addOnly.push(BREAKING_LABEL);
-
   return {
     conclusion,
     needsUpdate,
     hasConflict: facts.hasConflict,
     baseUnhealthy,
-    needsCiRetitle,
     title,
     reasons,
     summary,
-    labels: { add, remove, addOnly },
+    labels: { add, remove },
   };
 }
 
@@ -404,10 +324,9 @@ export function errorMergeSafetyDecision(message: string): MergeSafetyDecision {
     needsUpdate: false,
     hasConflict: false,
     baseUnhealthy: false,
-    needsCiRetitle: false,
     title: 'Could not evaluate',
     reasons: [message],
     summary: `Could not evaluate merge safety: ${message}`,
-    labels: { add: [], remove: [], addOnly: [] },
+    labels: { add: [], remove: [] },
   };
 }

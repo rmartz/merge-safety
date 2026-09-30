@@ -16,9 +16,7 @@ import {
   isCiTitle,
   isDocsCommitMessage,
   isDocsTitle,
-  mayCarryBreakingMarker,
   overlappingFiles,
-  BREAKING_LABEL,
   HOTFIX_LABEL,
   type BaseCheckRun,
   type BaseCommit,
@@ -229,10 +227,10 @@ export async function gatherMergeSafetyFacts(
     // Each boolean is derived from its detail list — one computation, two views.
     baseBreakingSinceMergeBase: baseBreakingCommits.length > 0,
     baseCiSinceMergeBase: baseCiCommits.length > 0,
-    // Additive by construction: the title marker and the label remain inputs, and
-    // the diff can only ever add a reason to treat the PR as breaking (#53).
-    prIsBreaking:
-      isBreakingTitle(meta.title) || labels.includes(BREAKING_LABEL) || diffSignals.length > 0,
+    // The title's `!` is the only declared input (#82) — pr-policy's title check
+    // keeps it in step with the `breaking change` label. The diff can only add a
+    // reason to re-test the PR against a moved base (#53).
+    prIsBreaking: isBreakingTitle(meta.title) || diffSignals.length > 0,
     prIsDocs: isDocsTitle(meta.title),
     baseOnlyDocsSinceMergeBase:
       commits.length > 0 && commits.every((c) => isDocsCommitMessage(c.message)),
@@ -247,6 +245,5 @@ export async function gatherMergeSafetyFacts(
     overlappingFiles: overlaps,
     failingBaseChecks,
     prBreakingDiffSignals: diffSignals,
-    prMayCarryBreakingMarker: mayCarryBreakingMarker(meta.title),
   };
 }

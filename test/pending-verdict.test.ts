@@ -23,7 +23,6 @@ function makeFacts(overrides: Partial<MergeSafetyFacts> = {}): MergeSafetyFacts 
     overlappingFiles: [],
     failingBaseChecks: [],
     prBreakingDiffSignals: [],
-    prMayCarryBreakingMarker: false,
     ...overrides,
   };
 }
@@ -63,16 +62,6 @@ describe('pending verdict (#58)', () => {
     );
     expect(d.conclusion).toBe('pending');
     expect(d.baseUnhealthy).toBe(false);
-  });
-
-  it('fails a stale PR that also needs a ci retitle', () => {
-    const d = evaluateMergeSafety(
-      stale({
-        prBreakingDiffSignals: [{ kind: 'sensitive-package-bump', detail: ['prettier 3 → 4'] }],
-      }),
-    );
-    expect(d.conclusion).toBe('failure');
-    expect(d.needsCiRetitle).toBe(true);
   });
 
   it('fails a current PR on the non-staleness axes (never pending)', () => {

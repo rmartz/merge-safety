@@ -30,18 +30,6 @@ const CI_SUBJECT_RE = /^ci(\([^)]*\))?!?:/;
 /** A `docs`-typed conventional commit (with or without a scope / `!`). */
 const DOCS_SUBJECT_RE = /^docs(\([^)]*\))?!?:/;
 
-/**
- * Conventional-commit types that may carry a `!` breaking marker. In a
- * semantic-release repo `!` fires a MAJOR release, so it is reserved for types
- * representing shippable functional change. `merge-pr.py` enforces this at merge
- * (rmartz/dotfiles#1559): it **strips** a `breaking change` label off any
- * non-functional-typed PR rather than stamping `!`. Mirrored here so the check
- * only ever proposes a label that will actually survive to merge.
- */
-const FUNCTIONAL_TYPES = new Set(['feat', 'fix', 'perf', 'revert']);
-
-/** The leading conventional-commit type, tolerating a scope and/or `!` in either order. */
-const CONVENTIONAL_TYPE_RE = /^([a-z]+)(?:!|\([^)]*\))*:/;
 
 /** The first line of a multi-line message — its subject. */
 export function firstLine(message: string): string {
@@ -78,12 +66,3 @@ export function isDocsTitle(title: string): boolean {
   return DOCS_SUBJECT_RE.test(title.trim());
 }
 
-/**
- * True when the title's conventional-commit type is one a `!` marker — and so a
- * `breaking change` label — may legitimately land on. False for a non-conventional
- * title and for every non-functional type (`ci`/`docs`/`chore`/`refactor`/…).
- */
-export function mayCarryBreakingMarker(title: string): boolean {
-  const type = CONVENTIONAL_TYPE_RE.exec(title.trim())?.[1];
-  return type !== undefined && FUNCTIONAL_TYPES.has(type);
-}
