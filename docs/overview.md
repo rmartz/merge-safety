@@ -57,6 +57,17 @@ gathers the safety **facts** for that one PR against its base:
   rather than applying a label that would be removed at merge. Unlike the staleness
   clauses this applies even to an already-current PR: merging under the wrong title
   loses the signal just as permanently.
+- **Breaking decision** — a dependency **major** bump on a functional-typed PR
+  (`feat`/`fix`/`perf`/`revert`) needs an explicit release-type decision before it
+  merges. The diff proves the bump, but not whether it reaches _this_ package's
+  consumers: a wrapper (an Action around its CLI, say) often absorbs a dependency's
+  major with no change to its own interface. So the check holds the PR until it
+  carries **`breaking change`** (the break reaches consumers; merge stamps `!`) or
+  **`breaking isolated`** (a reviewer confirmed it stays inside the dependency; the
+  PR ships at its title's own type). Carrying both, or `breaking isolated` with a
+  title `!`, is contradictory and also holds the PR. `breaking isolated` settles
+  only the release type: the bump still counts as breaking for base currency, so a
+  stale PR is still forced current.
 - **CI PR** — is the PR's own title a `ci:`/`ci(scope):` conventional commit,
   **or** does its own diff change `.github/workflows/**` or `.github/actions/**`?
   A CI change is only as good as the base it last ran against, so a
@@ -95,17 +106,16 @@ current facts. (The base-health axis mints no label; the `hotfix` label is an
 _input_ base health reads, and its outcome is carried by the check-run
 title/reason.)
 
-One label is handled differently. **`breaking change` is add-only**: the check
-applies it when the diff proves a dependency **major** bump _and_ the PR's title
-type is functional, so the label will survive to become a `!` on the squashed
-subject — and it **never removes it**, so a human's or an agent's explicit
-judgment is never silently reverted. It is deliberately _not_ applied for the
-other two diff signals: a CI-sensitive bump is answered by the `ci` retitle
-above, and a changed test expectation is a staleness signal rather than a public
-API break. Labelling either would stamp `!` on a functional-typed PR and fire a
-spurious semantic-release **major**. (Detection lives here; the title stamping
-stays in the coordinator's merge transaction, which is the only place that can
-rewrite a subject and holds the release-please exemption.)
+The breaking-decision labels are **inputs only** — the check reads
+`breaking change` and `breaking isolated` but never writes or removes either, so
+a human's or an agent's decision is never silently reverted. (Until #82 the check
+added `breaking change` itself for a major bump, which re-added it every time a
+reviewer removed it for a bump its consumers never see.) Only a major bump asks
+for a decision: a CI-sensitive bump is answered by the `ci` retitle above, and a
+changed test expectation is a staleness signal rather than a public API break.
+(Detection lives here; the title stamping stays in the coordinator's merge
+transaction, which is the only place that can rewrite a subject and holds the
+release-please exemption.)
 
 Whether a PR may merge into a **non-default base** at all — e.g. holding a
 stacked PR until its parent PR lands — is merge _policy_, not merge safety, and
