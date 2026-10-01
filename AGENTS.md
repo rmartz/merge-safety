@@ -2,9 +2,13 @@
 
 This repo is the standalone home of `@rmartz/merge-safety`: the pre-auto-merge
 safety verdict for a pull request (base-currency, breaking-change, and conflict
-facts), posted as the `merge-safety` check-run, plus the **reusable workflow**
-(`.github/workflows/merge-safety.yml`) that distributes it to consuming repos —
-pinned by version and kept current by Dependabot. See [README.md](README.md) and
+facts), posted as the `merge-safety` check-run. Consuming repos run it through
+the composite action
+[`rmartz/merge-safety-action`](https://github.com/rmartz/merge-safety-action),
+which pins this package's version in its lockfile and is kept current by
+Dependabot. The **reusable workflow** here (`.github/workflows/merge-safety.yml`)
+is deprecated: it keeps working for existing pins and warns on each run, until
+the fleet has migrated. See [README.md](README.md) and
 the [documentation](docs/index.md).
 
 The `evaluate` / `invalidate` implementation and the `merge-safety` bin live in
@@ -131,7 +135,7 @@ Most are enforced by eslint; the intent:
   until the trusted publisher on npmjs is updated. **Do not bump `package.json` by hand** — its
   `version` is a frozen `0.0.0` placeholder; there is deliberately **no
   `@semantic-release/git`**, so nothing commits a version back to `main`. The version
-  the reusable workflow installs is resolved at runtime from the **release tag whose
+  the deprecated reusable workflow installs is resolved at runtime from the **release tag whose
   commit is its own pinned SHA** (`job.workflow_sha` → `vX.Y.Z` tag) — never from
   `package.json`, never duplicated into a workflow file. Config lives in
   [`.releaserc.json`](.releaserc.json).

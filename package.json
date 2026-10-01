@@ -1,13 +1,13 @@
 {
   "name": "@rmartz/merge-safety",
   "version": "0.0.0",
-  "description": "The pre-auto-merge safety verdict for a PR (base-currency, breaking-change, and conflict facts), posted as the `merge-safety` check-run and distributed via a reusable workflow kept current by Dependabot.",
+  "description": "The pre-auto-merge safety verdict for a PR (base-currency, breaking-change, and conflict facts), posted as the `merge-safety` check-run and distributed through the `rmartz/merge-safety-action` composite action kept current by Dependabot.",
   "keywords": [
     "ci",
     "merge-safety",
     "auto-merge",
     "github-actions",
-    "reusable-workflow",
+    "composite-action",
     "check-run"
   ],
   "homepage": "https://github.com/rmartz/merge-safety#readme",
