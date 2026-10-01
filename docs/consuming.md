@@ -179,8 +179,11 @@ Why each piece is there:
   re-dispatch targets the caller file named by the `caller-workflow` input, which
   defaults to `merge-safety.yml`; a caller saved under any other filename must pass
   `caller-workflow: <its filename>`. (This repo's own caller,
-  [`merge-safety-self.yml`](../.github/workflows/merge-safety-self.yml), does
-  exactly that, since `merge-safety.yml` here is the reusable workflow itself.)
+  [`merge-safety-self.yml`](../.github/workflows/merge-safety-self.yml), no longer
+  uses the reusable workflow: it consumes
+  [`rmartz/merge-safety-action`](https://github.com/rmartz/merge-safety-action),
+  which re-dispatches the workflow it is running in, so no filename input is
+  needed.)
 - **`secrets: inherit`** — a safe default. The CLI install itself needs no token:
   current versions are public on npmjs. (Pins at v0.6.0 or earlier install from
   GitHub Packages with the built-in `GITHUB_TOKEN` via `packages: read`.)

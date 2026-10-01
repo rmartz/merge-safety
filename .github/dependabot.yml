@@ -9,9 +9,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      # Daily, not weekly: merge-safety-self.yml dogfoods this repo's own reusable
-      # workflow through a pinned release tag, and this ecosystem is what bumps
-      # that pin. Daily keeps the dogfood within a day of the latest release.
+      # Daily, not weekly: merge-safety-self.yml consumes rmartz/merge-safety-action
+      # through a pinned SHA, and this ecosystem is what bumps that pin. Daily keeps
+      # the self-caller within a day of the latest action release.
       interval: daily
     cooldown:
       # Explicit, so declaring the block can't change the third-party default.
