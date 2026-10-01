@@ -6,13 +6,15 @@ name: merge-safety (reusable)
 # keeps working for existing pins and warns on every run; it will be removed once
 # the fleet has migrated. See docs/consuming.md.
 #
-# The single entry point consuming repos pin. Unlike a read-only hygiene check, a
-# consumer's caller is NOT trigger-free: a reusable workflow cannot declare
-# `on: pull_request`/`push`, so the caller carries the triggers, grants the write
-# scopes (checks / pull-requests / actions), threads its workflow_dispatch `pr`
+# The legacy entry point that existing consumer pins still call. Unlike a read-only
+# hygiene check, a consumer's caller is NOT trigger-free: a reusable workflow cannot
+# declare `on: pull_request`/`push`, so the caller carries the triggers, grants the
+# write scopes (checks / pull-requests / actions), threads its workflow_dispatch `pr`
 # input through `with:`, and passes `secrets: inherit`. The caller is otherwise
 # thin — the evaluate-vs-invalidate branch and all label logic live here, because
 # a reusable workflow sees the caller's event context. See docs/consuming.md.
+#
+# Legacy caller form (new adopters use the composite action instead):
 #
 #   jobs:
 #     merge-safety:
