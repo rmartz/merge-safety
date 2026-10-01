@@ -57,14 +57,14 @@ file as off-limits just because bootstrap once seeded it.
   caller, pinned and bumped by Dependabot; it runs conflict-markers, action-pins,
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
-- **merge-safety arrives the same way:** this repo consumes its own reusable
-  workflow through the [`merge-safety-self.yml`](.github/workflows/merge-safety-self.yml)
-  caller — the exact consumer caller, pinned to a **released** SHA and bumped by
-  Dependabot, never a local `./` reference (the reusable workflow resolves the CLI
-  version from the release tag at its pinned commit, and an unreleased PR commit
-  has none). So PRs here are gated by the last _released_ merge-safety, not the
-  code under review — consumption, not full CI dogfooding. `merge-safety` is a
-  required status check on `main`, as in every consumer.
+- **merge-safety arrives the same way:** this repo consumes merge-safety through
+  [`rmartz/merge-safety-action`](https://github.com/rmartz/merge-safety-action) in
+  the [`merge-safety-self.yml`](.github/workflows/merge-safety-self.yml) caller —
+  the exact consumer caller, pinned to a **released** action SHA and bumped by
+  Dependabot. The action pins a released CLI in its lockfile, so PRs here are gated
+  by the last _released_ merge-safety, not the code under review — consumption, not
+  full CI dogfooding. `merge-safety` is a required status check on `main`, as in
+  every consumer.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
   build / package / release-notes-render ([ci.yml](.github/workflows/ci.yml)), the PR-title
   lint, the post-merge commit-convention tripwire
