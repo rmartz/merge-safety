@@ -1,265 +1,123 @@
 ---
 type: Reference
 title: Setting up merge-safety in a consuming repo
-description: How to add the thin merge-safety caller workflow to a repo, why it carries triggers and write scopes rather than being trigger-free, and how the SHA pin stays current via Dependabot.
+description: How a repo adopts merge-safety through rmartz/merge-safety-action, the labels and required check it needs, how the base-health and hotfix rules behave, and how to migrate off the deprecated reusable workflow.
 tags: [consumer, setup, auto-merge]
 ---
 
 # Setting up merge-safety in a consuming repo
 
-This is the consumer-facing guide: how a repository adopts `@rmartz/merge-safety`.
-Unlike a read-only hygiene check, merge-safety's caller is **not** trigger-free —
-it carries the event triggers, grants write scopes, and passes secrets through —
-because a reusable workflow cannot declare its own `on:` triggers and runs with
-the _intersection_ of the caller-granted and workflow-declared permissions.
+Consumers adopt merge-safety through the composite action
+[**`rmartz/merge-safety-action`**](https://github.com/rmartz/merge-safety-action),
+which pins a specific `@rmartz/merge-safety` CLI version in its lockfile and is
+kept current by Dependabot like the fleet's other `-action` repos. The caller
+workflow, its permissions, and the step-by-step setup live in that repo's
+[consumer guide](https://github.com/rmartz/merge-safety-action/blob/main/docs/consuming.md).
+This page covers what the verdict expects of a consuming repo and how it behaves.
 
-> **Prerequisite — the labels merge-safety manages must already exist in the repo.**
-> `evaluate` reconciles two labels on each PR — **`update required`** and
-> **`merge conflict`**. It reads a PR's breaking status from the title's `!`
-> alone, so a repo relies on pr-policy's title check to keep that `!` in step
-> with the `breaking change` label and to require it for a dependency major bump.
-> Label reconciliation goes
-> through `gh` and **soft-fails silently**: if these labels do not exist in the
-> repo, the check-run still posts its verdict but the human-facing labels never
-> appear, with no error surfaced. Create them before adopting —
-> `ai-ensure-labels` seeds the standard roster (which includes both), or
-> create them by hand — so the labels track the verdict from the first run.
->
-> **Stacked children are only re-evaluated when their parent moves if the caller
-> triggers on that push.** `invalidate` fans out over the PRs based on whichever
-> branch was pushed, so a push to a stacked parent's branch re-checks its children
-> against the moved base —
-> but only for branches the caller's `push:` trigger subscribes to. The example
-> below subscribes to the default branch alone; if your repo stacks PRs, widen it
-> (e.g. `branches: ['**']`) so parent branches fan out too. The cost is one short
-> `invalidate` job per push to any branch, which finds no PRs and exits for a branch
-> nothing is based on. **Only widen it on a pin at or after the release that ships
-> this** — an older reusable workflow fans out over the default branch's PRs on
-> _every_ push, so a widened trigger there would needlessly re-hold them all.
->
-> **The `hotfix` label is the base-health escape hatch.** When the base branch's
-> own CI is failing, `evaluate` fails the `merge-safety` check for every open PR
-> **except** one labelled **`hotfix`**, so the fix for broken main can still merge
-> while nothing else piles onto it. `hotfix` is in the standard `ai-ensure-labels`
-> roster; make sure it exists so a genuine broken-main fix can override the gate.
-> The failure is **self-documenting**: the `merge-safety` check-run reads
-> `Base CI failing` and its summary states _"only hotfix PRs may merge until it is
-> green (label this PR `hotfix` to override)"_ and lists the failing base checks —
-> so an investigating agent or human sees the reason and the override at the point
-> of failure, without consulting these docs. (Even so, `hotfix` should exist so
-> that override is actually applicable.)
->
-> **`hotfix` also exempts a CI PR from being forced current.** A CI PR — `ci`-typed,
-> or one whose diff changes `.github/workflows/**` / `.github/actions/**` — is normally held until it is current with its base (so a CI guard is re-tested
-> against the latest base). That guard is unconditional — except for a `hotfix`,
-> which frees it: a CI fix for a base whose own CI is red would otherwise be caught
-> in a bind, since being forced current may be impossible or pointless while the
-> base is broken. The exemption is scoped to _this PR is itself CI_; it does **not**
-> relax the breaking-change clause or the base-side clauses (a hotfix that overlaps
-> real base changes still needs a rebase to merge cleanly).
+> **The reusable workflow is deprecated.** `rmartz/merge-safety/.github/workflows/merge-safety.yml`
+> still works for repos pinned to it, and each run now emits a deprecation warning.
+> Migrate by replacing the caller with the one in the action's
+> [migration steps](https://github.com/rmartz/merge-safety-action/blob/main/docs/consuming.md#migrating-from-the-reusable-workflow).
+> The check-run name, triggers and required check are unchanged.
 
-## 1. Add the caller workflow
+## 1. Create the labels merge-safety manages
 
-On a new repo the [`@rmartz/bootstrap`](https://github.com/rmartz/ai-tools)
-`ai-ensure-project-config` step seeds this file (policy `seed`: seeded once, then
-owned by Dependabot — not re-managed by bootstrap, so the pin can move). **Existing
-repos consume merge-safety through this same caller**, so adopt the form below
-directly — do not wait for a bootstrap re-run, which only touches greenfield repos.
+`evaluate` reconciles two labels on each PR — **`update required`** and
+**`merge conflict`** — and honors **`hotfix`** (below). Label writes go through
+`gh` and **soft-fail silently**: if a label is missing, the check-run still posts
+its verdict but the human-facing label never appears, with no error surfaced.
+Create all three before adopting; `ai-ensure-labels` seeds the standard roster,
+which includes them.
 
-```yaml
-# .github/workflows/merge-safety.yml
-name: merge-safety
-on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
-  push:
-    branches: [main]
-  check_suite:
-    types: [completed]
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: PR number to evaluate
-        required: true
-permissions:
-  checks: write # post/flip the merge-safety check-run
-  statuses: write # set the merge-safety commit status the merge gate relies on
-  pull-requests: write # reconcile update-required / merge-conflict labels
-  contents: read
-  actions: write # dispatch per-PR evaluate runs on the push fan-out
-  packages: read # only for pins at v0.6.0 or earlier (GitHub Packages install)
-jobs:
-  merge-safety:
-    uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@<sha> # vX.Y.Z
-    with:
-      pr: ${{ inputs.pr }} # thread the workflow_dispatch input through
-    secrets: inherit
-```
+`evaluate` reads a PR's breaking status from the title's `!` alone, so a repo
+relies on pr-policy's title check to keep that `!` in step with the
+`breaking change` label and to require it for a dependency major bump.
 
-> **Trigger on `pull_request_target`, not `pull_request`.** GitHub runs a
-> `pull_request` workflow against the synthetic `refs/pull/N/merge` commit, which it
-> **cannot build for an unmergeable PR** — so on a PR that conflicts with its base,
-> no `pull_request` run is ever dispatched and the `merge-safety` check-run is never
-> posted. A required check that never appears hangs the PR forever (see
-> [the check-run contract](check-run-contract.md)), and a conflict is exactly when
-> the merge-safety verdict matters most. `pull_request_target` runs in the base
-> context and needs no merge commit, so it fires even when the PR is unmergeable.
-> This is safe here because the reusable `evaluate` job checks out the **base ref**,
-> fetches the PR head only as git _data_, and runs the published `merge-safety`
-> CLI — it never executes PR-authored code. (One trade-off: under
-> `pull_request_target` the caller definition is read from the base branch, so a PR
-> that edits this workflow only takes effect once merged — fine for a
-> Dependabot-owned pin.) Repos whose
-> caller still triggers on `pull_request` should switch it to `pull_request_target`.
+## 2. Trigger on `pull_request_target`, not `pull_request`
 
-> **Migrating an existing `pull_request` caller? The switch PR wedges itself — clear
-> it with one `workflow_dispatch`.** On a repo where `merge-safety` is already a
-> **required** status check, the very PR that changes this caller from
-> `pull_request` to `pull_request_target` cannot get its _own_ `merge-safety` check
-> to post: GitHub builds a `pull_request` run from the **head** workflow file, which
-> no longer subscribes to `pull_request`, while `pull_request_target` reads the
-> **base** file, which does not subscribe to it yet — so neither event fires. The
-> required check never appears and the PR sits `BLOCKED` on it forever. Break the
-> deadlock by dispatching the caller once for that PR (the caller already carries the
-> `workflow_dispatch` `pr` input): `gh workflow run merge-safety.yml --repo <owner>/<repo> --ref main -f pr=<PR>`.
-> `evaluate` posts the `merge-safety` check-run on the PR's head SHA, the required
-> check turns green, and the PR merges normally. This is a one-time nudge per
-> migration PR; once merged, `pull_request_target` fires on its own for every
-> subsequent PR.
+GitHub runs a `pull_request` workflow against the synthetic `refs/pull/N/merge`
+commit, which it **cannot build for an unmergeable PR** — so on a PR that conflicts
+with its base, no run is dispatched and the `merge-safety` check-run is never
+posted. A required check that never appears hangs the PR forever (see
+[the check-run contract](check-run-contract.md)), and a conflict is exactly when
+the verdict matters most. `pull_request_target` runs in the base context and fires
+even when the PR is unmergeable. It is safe because merge-safety fetches the PR
+head only as git _data_ and runs the published CLI — it never executes
+PR-authored code. Under `pull_request_target` the caller is read from the base
+branch, so a PR that edits the caller only takes effect once merged.
 
-Why each piece is there:
-
-- **The caller carries the triggers.** A reusable workflow can't declare its own
-  `on:` triggers; the caller does and passes the event context in. Use
-  `pull_request_target` (see the callout above) plus `push` on the default branch
-  (or on every branch, for a repo that stacks PRs — see the callout above), the
-  `check_suite` completion (below), and thread the `workflow_dispatch` input.
-  The `evaluate`-vs-`invalidate` branch and the label-narrowing logic live inside
-  the [reusable workflow](../.github/workflows/merge-safety.yml), so the caller
-  stays thin.
-- **`check_suite: [completed]` re-holds PRs when the base's CI flips.** The
-  base-health axis blocks non-hotfix PRs while the base branch's CI is red — where
-  "red" means one of the base branch's **required status checks** (the contexts its
-  ruleset declares) failed, not an arbitrary failing job like the native "Dependabot
-  Updates" run. `evaluate` reads that required-check set from the branch's rulesets
-  (`GET /repos/{repo}/rules/branches/{branch}`, covered by the `contents: read`
-  scope above); if it can't be read (no ruleset / transient error), base health
-  falls back to a coarser heuristic — a failing GitHub Actions run blocks, minus the
-  Dependabot job and any non-Actions deploy — so a broken base is still caught. A push
-  to the base re-evaluates open PRs immediately, but at that moment the base's CI
-  is still _pending_ — so the reusable workflow also fans out (`invalidate`) when a
-  base-branch `check_suite` **completes**, re-holding already-cleared PRs once the
-  base goes red and releasing them when it goes green. It is filtered to the
-  `github-actions` app on the default branch (one suite per base commit), and does
-  not loop: the fan-out's own runs use `GITHUB_TOKEN`, whose activity GitHub does
-  not let trigger a further `check_suite` run. (`check_suite`-triggered workflows
-  only run from the default branch — exactly the base we watch.)
-
-  A **re-run recovers automatically.** If base CI fails transiently and is then
-  re-run to green, the re-run completes the _same_ check suite again, so GitHub
-  fires a second `check_suite: completed` (now `success`) — `invalidate` fans out
-  once more, each PR re-reads the base tip with `?filter=latest` (which returns the
-  passing re-run, not the earlier failure), and the held PRs are released. The one
-  gap is the recursion guard above: if the re-run is _initiated by `GITHUB_TOKEN`_,
-  GitHub suppresses that `check_suite` event, so the auto-release waits for the next
-  base event instead (a push to the base, or any PR `synchronize`, re-evaluates and
-  picks up the now-green base — so a PR is never _permanently_ stuck, only until the
-  next event). A **human** re-run, or one via a PAT/app token, fires normally.
-
-- **Write scopes, not read-only.** Effective permissions are the intersection of
-  caller-granted and workflow-declared, so the caller must grant the full
-  `checks` / `statuses` / `pull-requests` / `actions: write` set. **Add
-  `statuses: write` before taking a pin that requests it.** The reusable workflow
-  declares it, and GitHub refuses to start a reusable workflow that asks for a
-  permission its caller doesn't grant. Without it, the Dependabot bump's own
-  `merge-safety` run fails to start. The status is what makes the verdict reliable;
-  see [the check-run contract](check-run-contract.md#the-commit-status-is-what-the-gate-relies-on).
-- **`workflow_dispatch` `pr` threading** — the `invalidate` fan-out re-dispatches
-  each PR via `workflow_dispatch`, and the `pr` input passes through `with:`. The
-  re-dispatch targets the caller file named by the `caller-workflow` input, which
-  defaults to `merge-safety.yml`; a caller saved under any other filename must pass
-  `caller-workflow: <its filename>`. (This repo's own caller,
-  [`merge-safety-self.yml`](../.github/workflows/merge-safety-self.yml), no longer
-  uses the reusable workflow: it consumes
-  [`rmartz/merge-safety-action`](https://github.com/rmartz/merge-safety-action),
-  which re-dispatches the workflow it is running in, so no filename input is
-  needed.)
-- **`secrets: inherit`** — a safe default. The CLI install itself needs no token:
-  current versions are public on npmjs. (Pins at v0.6.0 or earlier install from
-  GitHub Packages with the built-in `GITHUB_TOKEN` via `packages: read`.)
-
-## 2. Keep the pin current
-
-The `@<sha>` pin is bumped by Dependabot's `github-actions` ecosystem, the same
-channel every reusable-workflow consumer uses:
-
-```yaml
-# .github/dependabot.yml
-version: 2
-updates:
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-```
-
-**Use a plain `# vX.Y.Z` version comment** on the pin — e.g.
-`…/merge-safety.yml@<sha> # v0.1.0`. This repo's releases are **tagged** plain
-`vX.Y.Z` (cut automatically by semantic-release on push to `main` — see the repo's
-Releases), so the pin comment matches the tag directly: that is what Dependabot's
-`github-actions` ecosystem needs to re-bump the SHA and refresh the comment together,
-and the form consumer pin-linters requiring a full `vMAJOR.MINOR.PATCH` comment
-accept. The reusable workflow resolves which package version to install from the
-release tag at the SHA you pin, so the pinned SHA fully determines the behavior.
-
-> The very first release (`v0.1.0`) predates this and was tagged `merge-safety-v0.1.0`
-> (a release-please component tag); every release from `v0.1.1` on is a plain
-> `vX.Y.Z` tag.
+> **Migrating an existing `pull_request` caller? The switch PR wedges itself —
+> clear it with one `workflow_dispatch`.** Where `merge-safety` is already
+> required, the PR that changes the caller from `pull_request` to
+> `pull_request_target` cannot post its own check: a `pull_request` run reads the
+> **head** file, which no longer subscribes to it, while `pull_request_target`
+> reads the **base** file, which does not subscribe yet. Dispatch the caller once
+> for that PR — `gh workflow run merge-safety.yml --repo <owner>/<repo> --ref main -f pr=<PR>`
+> — and the required check turns green.
 
 ## 3. Require the check
 
-Add `merge-safety` to the repo's **required status checks** on the default branch.
-The name must be exactly `merge-safety` — see
-[the check-run contract](check-run-contract.md). This is what makes native
-auto-merge wait for the safety verdict.
+Add `merge-safety` to the default branch's **required status checks**. The name
+must be exactly `merge-safety` — see [the check-run contract](check-run-contract.md).
+This is what makes native auto-merge wait for the safety verdict. GitHub only
+lists a check in the picker after it has posted once, so open a PR or dispatch the
+workflow first, or set the check by name through the rulesets API.
 
-> **First run — trigger the check once before requiring it.** GitHub's
-> branch-protection UI only lists a check in the required-checks picker after it has
-> posted at least once, so on a fresh repo `merge-safety` won't be selectable yet.
-> Let the workflow run one time first — open a PR, or dispatch it via
-> `workflow_dispatch` (the `pr` input) — then add `merge-safety` to the required
-> checks. (Alternatively, set it by name through the branch-protection API before it
-> has ever run.)
+## How the verdict behaves
 
-**Auth:** the published `@rmartz/merge-safety` package is **public** on npmjs, so
-the install needs no token or PAT. Versions up to 0.6.0 were published to GitHub
-Packages, and a pin at one of those tags installs from there using the built-in
-`GITHUB_TOKEN` — that is the only reason for the `packages: read` permission above,
-and you can remove it once Dependabot has moved your pin past v0.6.0.
+- **Stacked children are re-evaluated when their parent moves — if the caller
+  triggers on that push.** `invalidate` fans out over the PRs based on whichever
+  branch was pushed, but only for branches the caller's `push:` trigger subscribes
+  to. Subscribe to `'**'` if your repo stacks PRs; a push to a branch nothing is
+  based on finds no PRs and exits.
+- **Base health holds PRs while the base is red.** "Red" means one of the base
+  branch's **required status checks** (the contexts its ruleset declares) failed —
+  not an arbitrary failing job like the native "Dependabot Updates" run.
+  `evaluate` reads that set from `GET /repos/{repo}/rules/branches/{branch}`; if it
+  can't (no ruleset, transient error), it falls back to a coarser heuristic — a
+  failing GitHub Actions run blocks, minus the Dependabot job and non-Actions
+  deploys. A push-time re-evaluation sees base CI still _pending_, so the caller's
+  `check_suite: [completed]` trigger is what re-holds already-cleared PRs once the
+  base goes red and releases them when it goes green. It does not loop: the
+  fan-out's own runs use `GITHUB_TOKEN`, whose activity GitHub does not let
+  trigger a further `check_suite` run.
+- **A re-run recovers automatically.** Re-running failed base CI to green fires a
+  second `check_suite: completed`; each PR re-reads the base tip with
+  `?filter=latest` and is released. The exception: a re-run initiated by
+  `GITHUB_TOKEN` fires no event, so release waits for the next base push or PR
+  `synchronize`. A human re-run, or one via a PAT/app token, fires normally.
+- **`hotfix` is the base-health escape hatch.** While the base's CI is failing,
+  every open PR fails the `merge-safety` check **except** one labelled `hotfix`,
+  so the fix for a broken base can still merge. The check-run reads
+  `Base CI failing`, lists the failing base checks, and names the override, so the
+  reason is visible at the point of failure.
+- **`hotfix` also exempts a CI PR from being forced current.** A CI PR (`ci`-typed,
+  or changing `.github/workflows/**` / `.github/actions/**`) is normally held until
+  current with its base, so a CI guard is re-tested against the latest base. A
+  `hotfix` frees it, since being forced current may be impossible while the base
+  is broken. It does **not** relax the breaking-change clause or the base-side
+  clauses.
+- **Several overlapping `merge-safety` runs on one PR are expected.** One PR action
+  can fire several `pull_request_target` events within a second (Dependabot opening
+  a PR emits `opened` + one `labeled` per label + often `edited`). They overlap
+  safely: `evaluate` reads the title, labels, mergeable state, head SHA and base
+  checks live from the API, so concurrent runs post the same verdict, and GitHub
+  gates on the latest value under the name. Runs must not share a per-PR
+  `concurrency` group: GitHub cancels superseded pending runs, and a `cancelled`
+  conclusion reads as a failure (removed in
+  [#48](https://github.com/rmartz/merge-safety/issues/48)).
 
-> **Do not pin v0.7.0 through v0.9.0.** Their release ran npm 10, which can't use
-> OIDC trusted publishing, so those tags have no npm package and the install step
-> fails with `ETARGET`. v0.10.0 had the same failure but was backfilled with the
-> release workflow's manual `backfill` path, so it and later versions install
-> normally.
+## Reusable-workflow pins
 
-> **Several overlapping `merge-safety` runs on one PR are expected.** A single PR
-> action can fire several `pull_request_target` events near-simultaneously
-> (Dependabot opening a PR emits `opened` + `labeled` once per label + often
-> `edited`, all within ~1s), and each one starts its own run. They are allowed to
-> overlap: the reusable workflow declares **no per-PR `concurrency` group**, because
-> `evaluate` is idempotent — it reads the PR's title, labels, mergeable state, head
-> SHA and the base's checks live from the API at run time rather than from the event
-> payload, so concurrent runs for one PR compute the _same_ verdict and post the same
-> check-run and commit status. GitHub gates on the latest value posted under the
-> name, so ordering does not change the outcome. **Only the `merge-safety` context
-> gates the merge** (see [the check-run contract](check-run-contract.md)).
->
-> **If you adopted merge-safety before v0.3.1 you may remember red ✗ "cancelled"
-> entries here** — often under the misleading name
-> `merge-safety / Invalidate open PRs (base moved)`. Those came from a per-PR
-> `concurrency` group: GitHub allows one pending run per group and cancels the runs a
-> newer event supersedes. Because `cancelled` is also what a timed-out run reports,
-> they were indistinguishable from real failures to automation reading conclusions.
-> The group was removed in
-> [#48](https://github.com/rmartz/merge-safety/issues/48); bump your pin to stop them.
+Repos still pinned to the deprecated reusable workflow keep working until they
+migrate:
+
+- It resolves the CLI version from the release tag whose commit is its pinned SHA,
+  so pin a release commit with a plain `# vX.Y.Z` comment, as Dependabot does.
+- Pins at v0.6.0 or earlier install from GitHub Packages and need
+  `packages: read`; later versions install from npmjs with no token.
+- **Do not pin v0.7.0 through v0.9.0** — those tags have no npm package, so the
+  install fails with `ETARGET`.
+- A caller saved under a filename other than `merge-safety.yml` must pass
+  `caller-workflow: <its filename>`; the action detects this itself.

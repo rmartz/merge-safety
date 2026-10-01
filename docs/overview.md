@@ -13,8 +13,8 @@ It is the gate that lets a repo use GitHub's native auto-merge safely: a PR hold
 auto-merge until its `merge-safety` check clears, and a change to the base branch
 re-holds every other open PR until each re-clears.
 
-It ships as one CLI, `merge-safety`, with two operations that the
-[reusable workflow](consuming.md) dispatches by event:
+It ships as one CLI, `merge-safety`, with two operations that
+[`rmartz/merge-safety-action`](consuming.md) dispatches by event:
 
 ## `evaluate` — one PR
 
@@ -124,5 +124,5 @@ goes red, and releasing them when it goes green again. See
 
 - **[The check-run contract](check-run-contract.md)** — the fleet-wide meaning of
   the `merge-safety` check-run name.
-- **[Setting up merge-safety in a consuming repo](consuming.md)** — the caller
-  workflow and its permissions.
+- **[Setting up merge-safety in a consuming repo](consuming.md)** — adopting it
+  through merge-safety-action, and how the verdict behaves.
