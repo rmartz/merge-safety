@@ -1,5 +1,11 @@
 name: merge-safety (reusable)
 
+# DEPRECATED — consumers should call the rmartz/merge-safety-action composite
+# action instead (https://github.com/rmartz/merge-safety-action), which pins the
+# CLI in its lockfile and matches the fleet's other `-action` repos. This workflow
+# keeps working for existing pins and warns on every run; it will be removed once
+# the fleet has migrated. See docs/consuming.md.
+#
 # The single entry point consuming repos pin. Unlike a read-only hygiene check, a
 # consumer's caller is NOT trigger-free: a reusable workflow cannot declare
 # `on: pull_request`/`push`, so the caller carries the triggers, grants the write
@@ -106,6 +112,11 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
       BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
     steps:
+      - name: Deprecation notice
+        run: >-
+          echo "::warning title=merge-safety reusable workflow is deprecated::Call
+          rmartz/merge-safety-action instead — see
+          https://github.com/rmartz/merge-safety-action/blob/main/docs/consuming.md#migrating-from-the-reusable-workflow"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
@@ -202,6 +213,11 @@ jobs:
       # concluded (the check_suite filter above guarantees it is the default).
       BASE_BRANCH: ${{ github.event_name == 'push' && github.ref_name || github.event.check_suite.head_branch }}
     steps:
+      - name: Deprecation notice
+        run: >-
+          echo "::warning title=merge-safety reusable workflow is deprecated::Call
+          rmartz/merge-safety-action instead — see
+          https://github.com/rmartz/merge-safety-action/blob/main/docs/consuming.md#migrating-from-the-reusable-workflow"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ inputs.node-version }}

@@ -9,8 +9,9 @@ Documentation for `@rmartz/merge-safety`, written in
 
 - [What merge-safety is](overview.md) — the pre-auto-merge verdict, the
   `evaluate` / `invalidate` operations, and the check-run + labels it manages.
-- [Setting up merge-safety in a consuming repo](consuming.md) — the thin caller
-  workflow, the write scopes it grants, and how the pin stays current.
+- [Setting up merge-safety in a consuming repo](consuming.md) — adopting it
+  through merge-safety-action, the labels and required check it needs, and how
+  base health and `hotfix` behave.
 - [The check-run contract](check-run-contract.md) — why the check-run name
   `merge-safety` is a fleet contract that cannot be renamed locally.
 - [The OKF documentation format](okf-format.md) — how these pages are structured
