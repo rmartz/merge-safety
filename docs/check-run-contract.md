@@ -65,7 +65,11 @@ own Actions run, so it shows up as `cancelled` rather than as a failure, and
 the PR keeps whatever `merge-safety` state it already had until the next event
 re-evaluates it. Cancelling uses the `actions: write` scope the caller already
 grants for the `invalidate` fan-out; if the cancel cannot be requested, the CLI
-exits `75` (`EX_TEMPFAIL`), which still fails the step.
+exits `75` (`EX_TEMPFAIL`), which still fails the step. The cancel is
+**run-wide**, so the caller workflow must be dedicated to merge-safety (see
+[Setting up merge-safety](consuming.md#how-the-verdict-behaves)). Why a cancelled
+run does not disturb the gate is covered
+[below](#only-the-named-context-gates--sibling-entries-do-not).
 
 A stale-only PR used to get a red ✗ `failure`
 ([#58](https://github.com/rmartz/merge-safety/issues/58)). Being out of date is
@@ -161,4 +165,24 @@ per-PR `concurrency` group and GitHub cancels any pending run a newer event supe
 That group was removed in
 [#48](https://github.com/rmartz/merge-safety/issues/48): a cancelled run renders red ✗
 and is the same conclusion a timed-out run produces, so it read as a failure to anything
-inspecting check conclusions. The burst's runs now overlap and each completes normally.
+inspecting check conclusions. A burst happens on nearly every PR, so the cancelled runs
+were routine noise on every consumer's checks list, and the runs were cancelled for no
+reason of their own. The burst's runs now overlap and each completes normally.
+
+A cancel on a [transient API error](#three-verdict-states) is acceptable where that
+superseded-run cancel was not, for three reasons:
+
+- **It is rare and honest.** It happens only when the run genuinely could not evaluate
+  the PR (an exhausted quota, a GitHub 5xx, a network timeout), not as part of a PR's
+  normal event flow, and `cancelled` is the accurate conclusion for it.
+- **It posts no verdict.** The `merge-safety` check-run and commit status are never
+  written, so the gate state this package owns is untouched and the next event
+  re-evaluates the PR. The Actions job's own entry for the cancelled run is a sibling
+  like any other (in a consuming repo the job is often named `merge-safety` too), so
+  by the rule above it does not gate. A `cancelled` conclusion is never `success`,
+  `neutral`, or `skipped`, so it cannot turn the gate green either.
+- **The worst case fails safe.** If the cancelled run was the only evaluation of that
+  head SHA, there is no earlier verdict to keep, the required `merge-safety` context
+  is missing, and the PR stays blocked until the next event posts one. A PR that
+  already had a verdict (for example the `Re-evaluating` mark `invalidate` left)
+  keeps it.
