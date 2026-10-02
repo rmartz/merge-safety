@@ -78,6 +78,9 @@ It then posts the `merge-safety` check-run with the verdict, and mirrors it to a
 The verdict has three
 states: **success** (safe to merge as-is), **pending** (the PR's only problem is
 that it is stale, which a branch update clears), and **failure** (anything else).
+An external transient error (an API quota, a GitHub outage) is not a verdict: the
+run cancels itself instead of failing, as described in
+[the check-run contract](check-run-contract.md#three-verdict-states).
 A pending verdict is posted as an incomplete check-run, so it blocks the merge
 without showing a red ✗; see
 [the check-run contract](check-run-contract.md#three-verdict-states). It also

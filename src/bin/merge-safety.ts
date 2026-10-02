@@ -8,8 +8,15 @@
 // All judgment lives in the library; this only parses args and talks to `gh`.
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ghCall, resolveRepoTarget, addLabels, removeLabel } from '../lib/github.js';
+import {
+  ghCall,
+  resolveRepoTarget,
+  addLabels,
+  removeLabel,
+  GhTransientError,
+} from '../lib/github.js';
 import { postCheck } from '../lib/check-run.js';
+import { abandonRunAsCancelled, EXIT_TRANSIENT } from '../lib/cancel-run.js';
 import { isMergeSafetyCommand, type MergeSafetyCommand } from '../index.js';
 import {
   evaluateMergeSafety,
@@ -91,8 +98,13 @@ function parse(argv: string[]): Args {
   return args;
 }
 
+/**
+ * A `gh` read the run cannot do without. A transient failure (quota, outage)
+ * throws {@link GhTransientError} so `main` can cancel the run rather than fail it;
+ * any other failure, or unparseable output, is `null`.
+ */
 async function ghJson<T>(argv: string[], cwd?: string): Promise<T | null> {
-  const out = await ghCall({ argv }, null, { cwd });
+  const out = await ghCall({ argv }, null, { cwd, throwOnTransient: true });
   if (out === null) return null;
   try {
     return JSON.parse(out) as T;
@@ -358,8 +370,20 @@ async function main(): Promise<void> {
     console.error('error: could not resolve target repo (pass --repo <owner/repo>)');
     process.exit(2);
   }
-  if (args.mode === 'evaluate') await runEvaluate(repo, args.pr as number, args);
-  else await runInvalidate(repo, args);
+  try {
+    if (args.mode === 'evaluate') await runEvaluate(repo, args.pr as number, args);
+    else await runInvalidate(repo, args);
+  } catch (err) {
+    if (!(err instanceof GhTransientError)) throw err;
+    // A quota or outage blip is not a verdict on the PR: end the run cancelled.
+    // `--json` is a local, side-effect-free mode, so it only exits non-zero.
+    if (args.json) {
+      console.error(`error: ${err.message}`);
+      process.exitCode = EXIT_TRANSIENT;
+    } else {
+      await abandonRunAsCancelled(err, { cwd: args.cwd });
+    }
+  }
 }
 
 // Run only when invoked directly as the CLI entry. realpathSync resolves the npm

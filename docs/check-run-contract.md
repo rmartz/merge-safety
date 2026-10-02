@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: The check-run contract
-description: Why the name `merge-safety` is a fleet contract wired into every consumer's required status checks and the auto-merge gate, why renaming it is a coordinated fleet migration rather than a local edit, why the verdict is posted as both a check-run and a commit status, and the three verdict states (success, pending, failure) consumers must tell apart.
+description: Why the name `merge-safety` is a fleet contract wired into every consumer's required status checks and the auto-merge gate, why renaming it is a coordinated fleet migration rather than a local edit, why the verdict is posted as both a check-run and a commit status, the three verdict states (success, pending, failure) consumers must tell apart, and why a transient API error cancels the run rather than failing it.
 tags: [merge-safety, auto-merge, contract, check-run, commit-status]
 ---
 
@@ -57,6 +57,15 @@ The `merge-safety` check-run ends in one of three states:
 
 The commit status carries the title as its description, cut to GitHub's
 140-character limit.
+
+`Could not evaluate` is for a PR whose facts genuinely could not be gathered. A
+run stopped by an **external transient error** (an exhausted REST or GraphQL
+quota, a GitHub 5xx, a network timeout) posts no verdict at all: it cancels its
+own Actions run, so it shows up as `cancelled` rather than as a failure, and
+the PR keeps whatever `merge-safety` state it already had until the next event
+re-evaluates it. Cancelling uses the `actions: write` scope the caller already
+grants for the `invalidate` fan-out; if the cancel cannot be requested, the CLI
+exits `75` (`EX_TEMPFAIL`), which still fails the step.
 
 A stale-only PR used to get a red ✗ `failure`
 ([#58](https://github.com/rmartz/merge-safety/issues/58)). Being out of date is
