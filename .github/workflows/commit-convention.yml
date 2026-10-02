@@ -1,8 +1,8 @@
 name: Conventional Commits (main)
 
 # Post-merge tripwire — the counterpart of pr-policy's `title` check (part of the
-# `pr-policy` check, pr-policy.yml), which validates PR titles *pre-merge* but cannot see whether the conventional title actually reached
-# `main`. This fails loudly when a subject lands on the default branch without a valid
+# `pr-policy` check, pr-policy.yml), which validates PR titles *pre-merge* but
+# cannot see whether the conventional title actually reached `main`. This fails loudly when a subject lands on the default branch without a valid
 # conventional-commit prefix: a squash-merge setting that used the branch commit
 # message instead of the PR title, a direct push, or a squash that dropped the prefix
 # — any of which makes semantic-release silently skip the release (release.yml). It
