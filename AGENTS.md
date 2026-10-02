@@ -69,6 +69,11 @@ file as off-limits just because bootstrap once seeded it.
   by the last _released_ merge-safety, not the code under review — consumption, not
   full CI dogfooding. `merge-safety` is a required status check on `main`, as in
   every consumer.
+- **pr-policy arrives the same way:** the [`pr-policy.yml`](.github/workflows/pr-policy.yml)
+  caller runs [`rmartz/pr-policy-action`](https://github.com/rmartz/pr-policy-action),
+  pinned to a released SHA and bumped by Dependabot, to post the `pr-policy`
+  read-only PR content verdict. It passes `skip-uat: true`: the repo ships only a
+  library, so there is nothing to user-test.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
   build / package / release-notes-render ([ci.yml](.github/workflows/ci.yml)), the PR-title
   lint, the post-merge commit-convention tripwire
