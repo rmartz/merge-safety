@@ -42,11 +42,45 @@ export interface GhCallOptions {
   /** Working directory for the `gh` subprocess. */
   cwd?: string;
   sleep?: Sleeper;
+  /**
+   * Throw {@link GhTransientError} instead of returning `null` when the call's
+   * final failure was an external transient condition (see
+   * {@link isTransientGhFailure}). For reads the caller cannot do without, so a
+   * quota or outage blip can be told apart from a real failure.
+   */
+  throwOnTransient?: boolean;
+}
+
+/**
+ * A `gh` call that failed on an external, transient condition — an exhausted
+ * REST/GraphQL quota, a GitHub 5xx, a network blip, a timeout — rather than on
+ * anything about the request or the repo. Retrying later would succeed, so the
+ * run reports itself cancelled instead of failed.
+ */
+export class GhTransientError extends Error {
+  constructor(readonly stderr: string) {
+    super(`transient GitHub API failure: ${stderr}`);
+    this.name = 'GhTransientError';
+  }
 }
 
 function isRateLimited(text: string): boolean {
   const t = (text ?? '').toLowerCase();
   return t.includes('rate limit') || t.includes('rate-limit');
+}
+
+/** `gh` stderr shapes for failures that are GitHub's or the network's, not ours. */
+const TRANSIENT_PATTERNS = [
+  /\bHTTP 5\d\d\b/,
+  /bad gateway|service unavailable|gateway time-?out|internal server error/i,
+  /timed out|timeout/i,
+  /connection (?:reset|refused)/i,
+  /could not resolve host|no such host|tls handshake|unexpected eof/i,
+];
+
+/** True when a `gh` failure's stderr marks an external, transient condition. */
+export function isTransientGhFailure(stderr: string): boolean {
+  return isRateLimited(stderr) || TRANSIENT_PATTERNS.some((p) => p.test(stderr));
 }
 
 async function runTransport(
@@ -58,6 +92,7 @@ async function runTransport(
   try {
     const r = await boundedRun(command, args, { timeoutMs: GH_API_TIMEOUT_MS, cwd, input: stdin });
     if (r.code === 0) return { stdout: r.stdout, stderr: '' };
+    if (r.timedOut) return { stdout: null, stderr: `gh timed out after ${GH_API_TIMEOUT_MS}ms` };
     return { stdout: null, stderr: r.stderr || '' };
   } catch (err) {
     return { stdout: null, stderr: err instanceof Error ? err.message : String(err) };
@@ -70,7 +105,8 @@ async function runTransport(
  * subcommand) immediately — REST and GraphQL draw from separate hourly pools, so
  * exhausting one degrades to the other rather than failing. Returns the winning
  * transport's stdout, or `null` on total failure (soft-fail, matching the
- * tracking/self-report callers' posture).
+ * tracking/self-report callers' posture) — unless `throwOnTransient` is set and
+ * the last failure was transient, which throws {@link GhTransientError}.
  */
 export async function ghCall(
   primary: Transport,
@@ -78,17 +114,22 @@ export async function ghCall(
   opts: GhCallOptions = {},
 ): Promise<string | null> {
   const sleep = opts.sleep ?? realSleep;
+  let lastStderr = '';
   for (const transport of [primary, fallback]) {
     if (!transport) continue;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const { stdout, stderr } = await runTransport(transport, opts.cwd);
       if (stdout !== null) return stdout;
+      lastStderr = stderr;
       // This pool is exhausted — don't burn retries on it; switch transports.
       if (isRateLimited(stderr)) break;
       if (attempt < MAX_RETRIES) {
         await sleep(Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS));
       }
     }
+  }
+  if (opts.throwOnTransient && isTransientGhFailure(lastStderr)) {
+    throw new GhTransientError(lastStderr.trim());
   }
   return null;
 }

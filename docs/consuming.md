@@ -104,9 +104,23 @@ workflow first, or set the check by name through the rulesets API.
   safely: `evaluate` reads the title, labels, mergeable state, head SHA and base
   checks live from the API, so concurrent runs post the same verdict, and GitHub
   gates on the latest value under the name. Runs must not share a per-PR
-  `concurrency` group: GitHub cancels superseded pending runs, and a `cancelled`
-  conclusion reads as a failure (removed in
-  [#48](https://github.com/rmartz/merge-safety/issues/48)).
+  `concurrency` group: GitHub cancels superseded pending runs, so a routine burst
+  would leave `cancelled` runs that read as a failure on nearly every PR (removed in
+  [#48](https://github.com/rmartz/merge-safety/issues/48)). That is a different case
+  from the next bullet, where a cancel is rare and posts no verdict.
+- **A transient GitHub API error cancels the run instead of failing it.** An
+  exhausted quota, a GitHub 5xx, or a network timeout says nothing about the PR, so
+  the run asks Actions to cancel itself (`POST /actions/runs/{run_id}/cancel`, using
+  the `actions: write` the caller already grants) and posts **no** verdict. The PR
+  keeps whatever `merge-safety` state it had, and the next event re-evaluates it; a
+  head with no verdict yet stays blocked on the missing required check, which is the
+  fail-safe outcome. See
+  [the check-run contract](check-run-contract.md#only-the-named-context-gates--sibling-entries-do-not)
+  for why the cancelled job entry does not displace an earlier verdict. **The cancel
+  is run-wide:** that endpoint cancels every job in the caller's workflow run, not
+  just the merge-safety step. Keep the caller workflow dedicated to merge-safety, as
+  [`merge-safety-self.yml`](https://github.com/rmartz/merge-safety/blob/main/.github/workflows/merge-safety-self.yml)
+  is, or an unrelated job sharing the run is cancelled along with it.
 
 ## Reusable-workflow pins
 

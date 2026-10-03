@@ -86,7 +86,9 @@ permissions:
 # That reads as a failure to anything inspecting conclusions (it is the same conclusion
 # a timed-out run produces) and it accounted for 218 cancelled runs across 11 consumer
 # repos. `cancel-in-progress: true` does not help: it only trades cancelled *pending*
-# runs for cancelled *in-progress* ones.
+# runs for cancelled *in-progress* ones. (This concerns routine superseded-run
+# cancels only. A run that cancels *itself* on a transient GitHub API error is rare,
+# posts no verdict, and is intentional — see docs/check-run-contract.md.)
 #
 # Letting the burst's runs overlap is safe because `evaluate` is idempotent. It takes
 # only the PR number and base ref from the event; every fact it judges on — title,
