@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { MergeSafetyFacts } from '../src/merge-safety.js';
 import type { Args } from '../src/bin/merge-safety.js';
+import type * as Github from '../src/lib/github.js';
 
 // The bin's only real-world boundaries are the `gh`/`git` transport and the
 // fact-gatherer. Mock both so every test is hermetic — no gh, no git, no network —
@@ -11,7 +12,13 @@ const ghCall = vi.fn();
 const resolveRepoTarget = vi.fn();
 const addLabels = vi.fn();
 const removeLabel = vi.fn();
-vi.mock('../src/lib/github.js', () => ({ ghCall, resolveRepoTarget, addLabels, removeLabel }));
+vi.mock('../src/lib/github.js', async (importOriginal) => ({
+  GhTransientError: (await importOriginal<typeof Github>()).GhTransientError,
+  ghCall,
+  resolveRepoTarget,
+  addLabels,
+  removeLabel,
+}));
 
 const gatherMergeSafetyFacts = vi.fn();
 vi.mock('../src/merge-safety-facts.js', () => ({
@@ -22,6 +29,7 @@ vi.mock('../src/merge-safety-facts.js', () => ({
 const { runEvaluate, runInvalidate, makeBaseChecksProbe, makeRequiredChecksProbe } =
   await import('../src/bin/merge-safety.js');
 const { MERGE_SAFETY_CHECK_NAME } = await import('../src/index.js');
+const { GhTransientError } = await import('../src/lib/github.js');
 
 const REPO = 'o/r';
 
@@ -113,6 +121,14 @@ describe('runEvaluate', () => {
     expect(log.mock.calls[0]?.[0]).toContain('Could not evaluate');
     expect(process.exitCode).toBe(1);
     expect(gatherMergeSafetyFacts).not.toHaveBeenCalled();
+  });
+
+  it('propagates a transient PR-read failure, posting nothing, so main can cancel the run', async () => {
+    ghCall.mockRejectedValue(new GhTransientError('GraphQL: API rate limit exceeded'));
+    await expect(runEvaluate(REPO, 5, evalArgs())).rejects.toBeInstanceOf(GhTransientError);
+    expect(ghCall.mock.calls[0]?.[2]).toMatchObject({ throwOnTransient: true });
+    expect(postedCheck()).toBeNull();
+    expect(addLabels).not.toHaveBeenCalled();
   });
 
   it('skips a closed/merged PR entirely — no check-run, no facts, no labels', async () => {
@@ -211,6 +227,14 @@ describe('runInvalidate', () => {
     await expect(runInvalidate(REPO, invalidateArgs({ baseBranch: 'main' }))).rejects.toThrow(
       /could not list open PRs/,
     );
+  });
+
+  it('propagates a transient open-PR list failure without invalidating anything', async () => {
+    ghCall.mockRejectedValue(new GhTransientError('GraphQL: API rate limit exceeded'));
+    await expect(
+      runInvalidate(REPO, invalidateArgs({ baseBranch: 'main' })),
+    ).rejects.toBeInstanceOf(GhTransientError);
+    expect(ghCall).toHaveBeenCalledTimes(1);
   });
 
   it('skips the excluded PR and, for each other, flips to pending then dispatches the caller workflow', async () => {
