@@ -13,7 +13,14 @@ const result = (over: Partial<{ stdout: string; stderr: string; code: number }> 
   ...over,
 });
 
-const { ghCall, resolveRepoTarget, addLabels, removeLabel } = await import('../src/lib/github.js');
+const {
+  ghCall,
+  resolveRepoTarget,
+  addLabels,
+  removeLabel,
+  GhTransientError,
+  isTransientGhFailure,
+} = await import('../src/lib/github.js');
 
 const noSleep = vi.fn(async () => {});
 
@@ -72,6 +79,64 @@ describe('ghCall', () => {
     boundedRun.mockRejectedValue(new Error('spawn ENOENT'));
     const out = await ghCall({ argv: ['gh', 'api', 'x'] }, null, { sleep: noSleep });
     expect(out).toBeNull();
+  });
+});
+
+describe('ghCall throwOnTransient', () => {
+  beforeEach(() => boundedRun.mockReset());
+
+  it('throws GhTransientError when the GraphQL quota is exhausted', async () => {
+    boundedRun.mockResolvedValue(
+      result({ stderr: 'GraphQL: API rate limit exceeded for user ID 1.', code: 1 }),
+    );
+    await expect(
+      ghCall({ argv: ['gh', 'pr', 'view', '5'] }, null, { sleep: noSleep, throwOnTransient: true }),
+    ).rejects.toBeInstanceOf(GhTransientError);
+    // A rate limit skips the retries — one attempt, then give up.
+    expect(boundedRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws on a timed-out call', async () => {
+    boundedRun.mockResolvedValue({ stdout: '', stderr: '', code: null, timedOut: true });
+    await expect(
+      ghCall({ argv: ['gh', 'api', 'x'] }, null, { sleep: noSleep, throwOnTransient: true }),
+    ).rejects.toThrow(/timed out/);
+  });
+
+  it('still soft-fails to null on a non-transient failure', async () => {
+    boundedRun.mockResolvedValue(result({ stderr: 'HTTP 404: Not Found', code: 1 }));
+    const out = await ghCall({ argv: ['gh', 'api', 'x'] }, null, {
+      sleep: noSleep,
+      throwOnTransient: true,
+    });
+    expect(out).toBeNull();
+  });
+
+  it('soft-fails to null on a transient failure unless asked to throw', async () => {
+    boundedRun.mockResolvedValue(result({ stderr: 'API rate limit exceeded', code: 1 }));
+    expect(await ghCall({ argv: ['gh', 'api', 'x'] }, null, { sleep: noSleep })).toBeNull();
+  });
+});
+
+describe('isTransientGhFailure', () => {
+  it.each([
+    'API rate limit exceeded for installation ID 1',
+    'You have exceeded a secondary rate limit.',
+    'HTTP 502: Bad Gateway',
+    'HTTP 503: Service Unavailable',
+    'Post "https://api.github.com/graphql": net/http: TLS handshake timeout',
+    'read tcp 10.0.0.1: connection reset by peer',
+  ])('treats %j as transient', (stderr) => {
+    expect(isTransientGhFailure(stderr)).toBe(true);
+  });
+
+  it.each([
+    'HTTP 404: Not Found',
+    'HTTP 422: Validation Failed',
+    'GraphQL: Could not resolve to a PullRequest with the number of 5.',
+    '',
+  ])('treats %j as a real failure', (stderr) => {
+    expect(isTransientGhFailure(stderr)).toBe(false);
   });
 });
 

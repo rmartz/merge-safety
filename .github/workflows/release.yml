@@ -66,7 +66,7 @@ permissions:
 jobs:
   release:
     if: github.event_name == 'push'
-    uses: rmartz/semantic-release-ci/.github/workflows/semantic-release.yml@dbcbcd8e0425ae4c0aa294d6595566ac4643a83d # v1.1.0
+    uses: rmartz/semantic-release-ci/.github/workflows/semantic-release.yml@55b1f6145b85738f94ad87c12c9d4f41ab7818b4 # v2.0.0
     with:
       # Build dist/ before the `prepare`-step `npm publish` packs it; the shared
       # workflow installs this repo's dependencies (pnpm, frozen lockfile) first.

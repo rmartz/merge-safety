@@ -2,9 +2,13 @@
 
 This repo is the standalone home of `@rmartz/merge-safety`: the pre-auto-merge
 safety verdict for a pull request (base-currency, breaking-change, and conflict
-facts), posted as the `merge-safety` check-run, plus the **reusable workflow**
-(`.github/workflows/merge-safety.yml`) that distributes it to consuming repos —
-pinned by version and kept current by Dependabot. See [README.md](README.md) and
+facts), posted as the `merge-safety` check-run. Consuming repos run it through
+the composite action
+[`rmartz/merge-safety-action`](https://github.com/rmartz/merge-safety-action),
+which pins this package's version in its lockfile and is kept current by
+Dependabot. The **reusable workflow** here (`.github/workflows/merge-safety.yml`)
+is deprecated: it keeps working for existing pins and warns on each run, until
+the fleet has migrated. See [README.md](README.md) and
 the [documentation](docs/index.md).
 
 The `evaluate` / `invalidate` implementation and the `merge-safety` bin live in
@@ -57,14 +61,19 @@ file as off-limits just because bootstrap once seeded it.
   caller, pinned and bumped by Dependabot; it runs conflict-markers, action-pins,
   package-pins, docs-links, md-pairing, okf, okf-index, and file-caps against our
   own tree.
-- **merge-safety arrives the same way:** this repo consumes its own reusable
-  workflow through the [`merge-safety-self.yml`](.github/workflows/merge-safety-self.yml)
-  caller — the exact consumer caller, pinned to a **released** SHA and bumped by
-  Dependabot, never a local `./` reference (the reusable workflow resolves the CLI
-  version from the release tag at its pinned commit, and an unreleased PR commit
-  has none). So PRs here are gated by the last _released_ merge-safety, not the
-  code under review — consumption, not full CI dogfooding. `merge-safety` is a
-  required status check on `main`, as in every consumer.
+- **merge-safety arrives the same way:** this repo consumes merge-safety through
+  [`rmartz/merge-safety-action`](https://github.com/rmartz/merge-safety-action) in
+  the [`merge-safety-self.yml`](.github/workflows/merge-safety-self.yml) caller —
+  the exact consumer caller, pinned to a **released** action SHA and bumped by
+  Dependabot. The action pins a released CLI in its lockfile, so PRs here are gated
+  by the last _released_ merge-safety, not the code under review — consumption, not
+  full CI dogfooding. `merge-safety` is a required status check on `main`, as in
+  every consumer.
+- **pr-policy arrives the same way:** the [`pr-policy.yml`](.github/workflows/pr-policy.yml)
+  caller runs [`rmartz/pr-policy-action`](https://github.com/rmartz/pr-policy-action),
+  pinned to a released SHA and bumped by Dependabot, to post the `pr-policy`
+  read-only PR content verdict. It passes `skip-uat: true`: the repo ships only a
+  library, so there is nothing to user-test.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
   build / package / release-notes-render ([ci.yml](.github/workflows/ci.yml)), the PR-title
   lint, the post-merge commit-convention tripwire
@@ -131,7 +140,7 @@ Most are enforced by eslint; the intent:
   until the trusted publisher on npmjs is updated. **Do not bump `package.json` by hand** — its
   `version` is a frozen `0.0.0` placeholder; there is deliberately **no
   `@semantic-release/git`**, so nothing commits a version back to `main`. The version
-  the reusable workflow installs is resolved at runtime from the **release tag whose
+  the deprecated reusable workflow installs is resolved at runtime from the **release tag whose
   commit is its own pinned SHA** (`job.workflow_sha` → `vX.Y.Z` tag) — never from
   `package.json`, never duplicated into a workflow file. Config lives in
   [`.releaserc.json`](.releaserc.json).

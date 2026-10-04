@@ -13,8 +13,8 @@ It is the gate that lets a repo use GitHub's native auto-merge safely: a PR hold
 auto-merge until its `merge-safety` check clears, and a change to the base branch
 re-holds every other open PR until each re-clears.
 
-It ships as one CLI, `merge-safety`, with two operations that the
-[reusable workflow](consuming.md) dispatches by event:
+It ships as one CLI, `merge-safety`, with two operations that
+[`rmartz/merge-safety-action`](consuming.md) dispatches by event:
 
 ## `evaluate` — one PR
 
@@ -78,6 +78,9 @@ It then posts the `merge-safety` check-run with the verdict, and mirrors it to a
 The verdict has three
 states: **success** (safe to merge as-is), **pending** (the PR's only problem is
 that it is stale, which a branch update clears), and **failure** (anything else).
+An external transient error (an API quota, a GitHub outage) is not a verdict: the
+run cancels itself instead of failing, as described in
+[the check-run contract](check-run-contract.md#three-verdict-states).
 A pending verdict is posted as an incomplete check-run, so it blocks the merge
 without showing a red ✗; see
 [the check-run contract](check-run-contract.md#three-verdict-states). It also
@@ -124,5 +127,5 @@ goes red, and releasing them when it goes green again. See
 
 - **[The check-run contract](check-run-contract.md)** — the fleet-wide meaning of
   the `merge-safety` check-run name.
-- **[Setting up merge-safety in a consuming repo](consuming.md)** — the caller
-  workflow and its permissions.
+- **[Setting up merge-safety in a consuming repo](consuming.md)** — adopting it
+  through merge-safety-action, and how the verdict behaves.

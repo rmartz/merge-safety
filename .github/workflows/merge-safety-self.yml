@@ -1,16 +1,15 @@
 name: merge-safety
 
 # This repo consumes its own merge-safety through the exact caller every consuming
-# repo uses (docs/consuming.md), so its own PRs get the `merge-safety` check-run and
-# it can be a required status check here too. It pins a RELEASED reusable workflow
-# by SHA — never a local `./.github/workflows/merge-safety.yml` reference — because
-# the reusable workflow resolves the CLI version from the release tag at its pinned
-# commit, and an unreleased PR commit has no tag. Dependabot's github-actions
-# ecosystem bumps the pin after each release, like any consumer.
+# repo uses (rmartz/merge-safety-action's docs/consuming.md), so its own PRs get the
+# `merge-safety` check-run and it can be a required status check here too. It pins
+# a RELEASED action by SHA, which in turn pins a released @rmartz/merge-safety in
+# its lockfile — so PRs here are gated by the last released CLI, not the code under
+# review. Dependabot's github-actions ecosystem bumps the pin, like any consumer.
 #
 # The caller is named merge-safety-self.yml because merge-safety.yml is the
-# reusable workflow itself; `caller-workflow` points the invalidate fan-out's
-# per-PR re-dispatch at this file instead of the conventional default.
+# (deprecated) reusable workflow itself. The action's invalidate fan-out
+# re-dispatches the workflow it is running in, so no filename input is needed.
 
 on:
   pull_request_target:
@@ -30,13 +29,30 @@ permissions:
   statuses: write # mirror the verdict to the merge-safety commit status (#73)
   pull-requests: write # reconcile update-required / merge-conflict labels
   contents: read
-  actions: write # dispatch per-PR evaluate runs on the push fan-out
-  packages: read # install the CLI from GitHub Packages
+  actions: write # re-dispatch this workflow per open PR when the base moves
 
 jobs:
   merge-safety:
-    uses: rmartz/merge-safety/.github/workflows/merge-safety.yml@dcad902b8acd5d7a377b0caac387b909465a5f09 # v0.11.0
-    with:
-      pr: ${{ inputs.pr }}
-      caller-workflow: merge-safety-self.yml
-    secrets: inherit
+    # Skip, without a runner, the events the action would no-op on: another app's
+    # check suite, a non-default branch's suite, a tag push, a branch deletion.
+    if: >-
+      (github.event_name != 'push' && github.event_name != 'check_suite') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && !github.event.deleted) ||
+      (github.event_name == 'check_suite' &&
+       github.event.check_suite.app.slug == 'github-actions' &&
+       github.event.check_suite.head_branch == github.event.repository.default_branch)
+    # Base-moved fan-outs serialize per branch and are never cancelled; each per-PR
+    # evaluate run gets its own group (run_id), so a burst of PR events never
+    # queues or cancels a run (#48).
+    concurrency:
+      group: >-
+        ${{ (github.event_name == 'push' || github.event_name == 'check_suite')
+        && format('merge-safety-invalidate-{0}', github.event_name == 'push' && github.ref_name || github.event.check_suite.head_branch)
+        || format('merge-safety-evaluate-{0}', github.run_id) }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: rmartz/merge-safety-action@a327f9599a1da413a08e4b831d8babe075935e27 # v0.1.0
+        with:
+          pr: ${{ inputs.pr }}
