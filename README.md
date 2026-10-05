@@ -74,8 +74,8 @@ split-prefix convention (rmartz/ai#82): a **production** bump arrives as
 **github-actions** (`chore(github-actions):`) bumps are release-less — as a
 zero-runtime-dependency package, all Dependabot bumps are dev-only in practice.
 
-Three guards back the automatic flow: [`pr-title-lint.yml`](.github/workflows/pr-title-lint.yml)
-(pre-merge title format), [`commit-convention.yml`](.github/workflows/commit-convention.yml)
+Three guards back the automatic flow: pr-policy's `title` check, part of the
+`pr-policy` check run by [`pr-policy.yml`](.github/workflows/pr-policy.yml) (pre-merge title format), [`commit-convention.yml`](.github/workflows/commit-convention.yml)
 (post-merge tripwire for a non-conventional subject that would make semantic-release
 silently skip), the shared [`release-check.yml`](.github/workflows/release-check.yml)
 (renders the notes through the shared
