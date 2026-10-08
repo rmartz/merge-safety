@@ -22,14 +22,16 @@ updates:
       prefix: chore
       include: scope
     groups:
-      # Every action bump, majors included, lands in one PR. The
-      # dependabot-auto-merge workflow arms auto-merge only for patch/minor, so a
-      # group containing a major is held for human review (fetch-metadata reports
-      # the group's highest update-type), and a major that breaks CI is split out
-      # into its own fix PR rather than holding the rest of the group back.
+      # Action patch and minor bumps batch into one PR; every major opens as its
+      # own PR. The dependabot-auto-merge workflow arms auto-merge only for
+      # patch/minor, so a major is held for human review on its own without
+      # holding the routine bumps back.
       github-actions:
         patterns:
           - '*'
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: npm
     directory: /
     schedule:
