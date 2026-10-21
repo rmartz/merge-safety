@@ -1,0 +1,90 @@
+name: pr-lifecycle
+# Shows which event and action started each run (e.g. pull_request_target /
+# review_requested), so the run list says what re-reconciled a PR.
+run-name: pr-lifecycle (${{ github.event_name }}${{ github.event.action && format('/{0}', github.event.action) || '' }})
+
+# Runs the @rmartz/pr-lifecycle reconciler via rmartz/pr-lifecycle-action: on every
+# relevant event it recomputes each PR's lifecycle state and converges its
+# lifecycle and UAT labels (rmartz/pr-lifecycle-action#63).
+#
+# Labels only: arm-auto-merge is off and no real-actor `token` is passed, so this
+# never arms, merges, disarms, or updates a branch, and posts no
+# `pr-lifecycle/sign-off` status (pr-policy keeps its own UAT classification
+# meanwhile). dependabot-auto-merge.yml keeps merging eligible Dependabot PRs.
+# Turning arming on is a later, per-repo step; see
+# rmartz/pr-lifecycle-action docs/consuming.md.
+#
+# pull_request_target is safe here only because nothing checks out or runs the
+# PR's code; the Action reads everything through the API.
+#
+# Reads and label writes use the workflow's GITHUB_TOKEN, since this repo has no
+# rmartz-merge-bot App secrets yet. Once it does, switch to the App token like
+# the rest of the fleet (an `actions/create-github-app-token` step passed as
+# `github-token`, with `permissions: {}` and a self-trigger guard).
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+      - synchronize
+      - edited
+      # A person's sign-off label (`no UAT needed`, `UAT passed`, `CI change
+      # approved`) is reconciled straight away.
+      - labeled
+      - unlabeled
+      # A bot review request added (or removed by hand) after a run's settle
+      # wait moves the PR into (or out of) awaiting-bot-review.
+      - review_requested
+      - review_request_removed
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+  # CI completion re-routes a PR through the CI gate. check_suite never fires for
+  # suites GitHub Actions creates, so workflow_run lists the Actions workflows
+  # behind this repo's checks.
+  check_suite:
+    types: [completed]
+  workflow_run:
+    workflows: [CI, Repo Hygiene, Release check, pr-policy]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to reconcile
+        required: true
+
+permissions:
+  pull-requests: write # labels, review requests, advisory comment
+  contents: read # branch rules, base head, commits for approval carry-over
+  checks: read # the CI gate
+  statuses: read # the CI gate
+  actions: write # report a transient failure as a cancelled run
+
+jobs:
+  reconcile:
+    name: Reconcile PR lifecycle
+    # A review on a fork PR runs with a read-only token, so it cannot write
+    # labels; skip it. The fork PR is reconciled on its next
+    # pull_request_target event, or on demand via workflow_dispatch.
+    if: >-
+      github.event_name != 'pull_request_review' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # One run per PR at a time; a newer event supersedes an in-flight run, since
+    # every run recomputes the PR from its current facts. CI-completion events are
+    # keyed by head SHA, as the PR number is only known inside the action.
+    concurrency:
+      group: >-
+        pr-lifecycle-${{ github.event.pull_request.number || inputs.pr ||
+        github.event.workflow_run.head_sha || github.event.check_suite.head_sha }}
+      cancel-in-progress: true
+    steps:
+      - uses: rmartz/pr-lifecycle-action@cb58fb834f4761dcf691d6801b8ba2e23316a04a # v4.3.0
+        with:
+          # Nothing here to user-test (matches pr-policy.yml's skip-uat): every
+          # PR is `no UAT needed`. Quoted: YAML 1.1 reads a bare off as false.
+          uat: 'off'
+          arm-auto-merge: false
