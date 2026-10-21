@@ -7,9 +7,8 @@ name: pr-policy
 #
 # skip-uat: this repo has nothing to user-test, so the UAT gate is off. It is set
 # here, in the default-branch caller, so a PR can't switch off a gate it would
-# otherwise wait on. pr-policy-action is retiring it (rmartz/pr-policy#85) in
-# favour of pr-lifecycle's `uat: 'off'`, which needs a pr-lifecycle caller here
-# first (rmartz/pr-lifecycle-action#63).
+# otherwise wait on. pr-lifecycle.yml carries the same setting (`uat: 'off'`);
+# skip-uat goes once pr-policy-action drops it (rmartz/pr-policy#85).
 #
 # pull_request_target is safe here only because nothing checks out or runs the
 # PR's code; the Action reads everything through the API. It is needed so fork
@@ -48,7 +47,7 @@ jobs:
     steps:
       # On a status event `pr` is empty: the Action evaluates every open PR
       # whose head is the event's commit.
-      - uses: rmartz/pr-policy-action@03783c06cd357924014cfec0b323af7a7287b401 # v1.6.0
+      - uses: rmartz/pr-policy-action@80ade584e206ca645780f9a839581531d292076a # v1.7.0
         with:
           pr: ${{ github.event.pull_request.number }}
           # Retitle a Dependabot linter/formatter bump to ci(...), the type the
