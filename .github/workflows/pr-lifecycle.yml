@@ -16,7 +16,7 @@ run-name: pr-lifecycle (${{ github.event_name }}${{ github.event.action && forma
 # Every read and write goes through an installation token for the
 # rmartz-merge-bot GitHub App, not GITHUB_TOKEN, so labels are attributed to the
 # bot and API calls draw on the App's own rate-limit pool rather than the
-# user's (rmartz/scripts#22). Unlike GITHUB_TOKEN, App-authored events trigger
+# user's. Unlike GITHUB_TOKEN, App-authored events trigger
 # workflows, so the job skips the label and review-request events the App
 # itself causes; see the job's `if`.
 
