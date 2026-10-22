@@ -7,15 +7,20 @@ run-name: pr-lifecycle (${{ github.event_name }}${{ github.event.action && forma
 # relevant event it recomputes each PR's lifecycle state and converges its
 # lifecycle and UAT labels (rmartz/pr-lifecycle-action#63).
 #
-# Labels only: no real-actor token (no App inputs) and arm-auto-merge off, so
-# this never arms, merges, disarms, or updates a branch, and posts no
-# `pr-lifecycle/sign-off` status, so pr-policy keeps its own classification.
-# Posting the status, and having pr-policy trust it, is a later step that adds
-# both together. dependabot-auto-merge.yml still does the merging.
+# No arming: arm-auto-merge is off, so this never arms, merges, disarms, or
+# updates a branch. Its App token only posts the
+# `pr-lifecycle/sign-off` status, which the pr-policy caller trusts from
+# rmartz-pr-lifecycle[bot]. dependabot-auto-merge.yml still does the merging.
+# Turning arming on is a later, per-repo step; see
+# rmartz/pr-lifecycle-action docs/consuming.md.
 #
 # pull_request_target is safe here only because nothing checks out or runs the
-# PR's code; the Action reads everything through the API. Reads and label writes
-# use the workflow's GITHUB_TOKEN.
+# PR's code; the Action reads everything through the API.
+#
+# Reads and label writes use the workflow's GITHUB_TOKEN. The action creates a
+# real-actor token from the rmartz-pr-lifecycle App (the PR_LIFECYCLE_CLIENT_ID /
+# PR_LIFECYCLE_PRIVATE_KEY secrets) for the writes that need one; until those
+# secrets are set, it reconciles labels only.
 
 on:
   pull_request_target:
@@ -80,10 +85,13 @@ jobs:
     steps:
       - uses: rmartz/pr-lifecycle-action@056397621b976d9279b562f232adeab60e281624 # v4.4.0
         with:
+          # The action creates its real-actor token from the rmartz-pr-lifecycle
+          # App to post the pr-lifecycle/sign-off status (arming is off). Both are
+          # Actions and Dependabot secrets; until they are set, the run reconciles
+          # labels only.
+          app-client-id: ${{ secrets.PR_LIFECYCLE_CLIENT_ID }}
+          app-private-key: ${{ secrets.PR_LIFECYCLE_PRIVATE_KEY }}
           # Nothing here to user-test (matches pr-policy.yml's skip-uat): every
           # PR is `no UAT needed`. Quoted: YAML 1.1 reads a bare off as false.
           uat: 'off'
           arm-auto-merge: false
-          # No real-actor token, so the sign-off status is skipped by design;
-          # don't post the advisory comment about it on every PR.
-          token-advisory: false

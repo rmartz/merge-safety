@@ -74,6 +74,9 @@ file as off-limits just because bootstrap once seeded it.
   pinned to a released SHA and bumped by Dependabot, to post the `pr-policy`
   read-only PR content verdict. It passes `skip-uat: true`: the repo ships only a
   library, so there is nothing to user-test.
+- **PR lifecycle labels:** the [`pr-lifecycle.yml`](.github/workflows/pr-lifecycle.yml)
+  caller runs `rmartz/pr-lifecycle-action` without arming, with `uat: 'off'` matching `skip-uat`: it keeps each PR's lifecycle labels current, marks every PR `no UAT needed`, and posts the `pr-lifecycle/sign-off` status as the `rmartz-pr-lifecycle` App, which the `pr-policy` caller trusts. `dependabot-auto-merge.yml`
+  still does the merging.
 - **CI, releases, and labels are owned here:** typecheck / lint / format / test /
   build / package / release-notes-render ([ci.yml](.github/workflows/ci.yml)), the PR-title
   lint, the post-merge commit-convention tripwire
