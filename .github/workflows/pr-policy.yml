@@ -47,7 +47,7 @@ jobs:
     steps:
       # On a status event `pr` is empty: the Action evaluates every open PR
       # whose head is the event's commit.
-      - uses: rmartz/pr-policy-action@80ade584e206ca645780f9a839581531d292076a # v1.7.0
+      - uses: rmartz/pr-policy-action@0eb43793e1a79b6af2bf2eb6352067f0d03125fd # v1.9.0
         with:
           pr: ${{ github.event.pull_request.number }}
           # pr-lifecycle posts its sign-off status as the rmartz-pr-lifecycle App;
