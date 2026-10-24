@@ -32,6 +32,13 @@ the verdict expects of a repo and how it behaves.
 > `rmartz/merge-safety/.github/workflows/merge-safety.yml` keep working and see a
 > deprecation warning on each run; migrate them to the action.
 
+## Using it as a library
+
+The package also exports the verdict for in-process use, e.g. from a hosted
+GitHub App with no checkout: `gatherMergeSafetyFacts` with the API-backed
+`makeApiGitRunner` fact source, then `evaluateMergeSafety`. See
+[docs/fact-sources.md](docs/fact-sources.md).
+
 ## Requirements
 
 - Node.js >= 20.11

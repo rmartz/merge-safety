@@ -4,8 +4,8 @@
  * Encodes the package's stable public contract: the `merge-safety` check-run
  * name and the CLI command surface. The evaluate/invalidate implementation
  * (`merge-safety.ts` + `merge-safety-facts.ts` and the `merge-safety` bin)
- * lives alongside it; this module is intentionally the narrow, frozen surface
- * consumers and the reusable workflow depend on.
+ * lives alongside it. The check-run name and command surface below are frozen;
+ * the re-exported library surface lets a consumer run the verdict in-process.
  */
 
 /**
@@ -19,6 +19,39 @@
  * docs/check-run-contract.md.
  */
 export const MERGE_SAFETY_CHECK_NAME = 'merge-safety';
+
+/**
+ * The library surface for running merge-safety in-process (e.g. from a hosted
+ * GitHub App) instead of through the CLI: gather the facts with a fact source,
+ * then judge them. Two fact sources plug into `gatherMergeSafetyFacts`'s `git`
+ * option — the git-backed {@link makeGitRunner} (the CLI's default, needs a
+ * checkout) and the API-backed {@link makeApiGitRunner} (needs only a GitHub API
+ * client). See docs/fact-sources.md.
+ */
+export {
+  gatherMergeSafetyFacts,
+  makeGitRunner,
+  type BaseChecksProbe,
+  type GatherOptions,
+  type GitRunner,
+  type PrMergeMeta,
+  type RequiredChecksProbe,
+} from './merge-safety-facts.js';
+export {
+  makeApiGitRunner,
+  COMPARE_MAX_COMMITS,
+  COMPARE_MAX_FILES,
+  COMMIT_MAX_FILES,
+  type ApiGitRunnerOptions,
+  type GitHubApiGet,
+} from './api-fact-source.js';
+export {
+  evaluateMergeSafety,
+  errorMergeSafetyDecision,
+  type BaseCheckRun,
+  type MergeSafetyDecision,
+  type MergeSafetyFacts,
+} from './merge-safety.js';
 
 /**
  * The two operations the `merge-safety` CLI dispatches:

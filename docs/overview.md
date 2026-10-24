@@ -129,3 +129,5 @@ goes red, and releasing them when it goes green again. See
   the `merge-safety` check-run name.
 - **[Setting up merge-safety in a consuming repo](consuming.md)** — adopting it
   through merge-safety-action, and how the verdict behaves.
+- **[The two fact sources](fact-sources.md)** — where the git facts come from: a
+  checkout (the CLI's default) or the GitHub REST API (for an in-process caller).
