@@ -77,10 +77,15 @@ data:
 - the base moved by more than **250 commits** (`total_commits` exceeds the
   `commits[]` returned);
 - either compare lists **300 files**, the compare API's cap;
-- a PR file has changed lines but **no `patch`** (GitHub omits it for an oversized
-  diff). A file with no changed lines and no patch — a binary, a pure rename —
-  is kept with only its header, which is all `git diff --unified=0` gives the
-  detectors for it too;
+- a compare or commit response has **no `files` list** at all (GitHub drops it for
+  a diff too expensive to generate). The one exception is a base compare for a
+  base that has not moved, which has nothing to list;
+- a PR file has **no `patch`** (GitHub omits it for an oversized diff), unless the
+  API reports `changes: 0`. Such a file, a binary or a pure rename, is kept with
+  only its header, which is all `git diff --unified=0` gives the detectors for it
+  too. A missing `changes` is unknown, not zero;
+- the two compares report **different merge bases**, as a criss-cross history with
+  several merge bases can produce;
 - a base commit lists **300 files** (the commit API's unpaginated cap) and none of
   them is a CI path;
 - an API read returns `null`, or `gatherMergeSafetyFacts` makes a `git` query the

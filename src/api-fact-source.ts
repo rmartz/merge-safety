@@ -88,9 +88,23 @@ async function mapBounded<T, R>(
   return results;
 }
 
+/**
+ * A response's `files` list. GitHub can leave it out (a diff too expensive to
+ * generate), and reading that as "no files changed" would hide every file-derived
+ * signal, so a missing list fails closed.
+ */
+function requireFiles(files: readonly ApiFile[] | undefined, what: string): readonly ApiFile[] {
+  if (!Array.isArray(files)) throw new Error(`the GitHub API returned no file list for ${what}`);
+  return files;
+}
+
 /** The changed files of a compare, failing closed when the list may be truncated. */
 function compareFiles(compare: CompareResponse, side: string): readonly ApiFile[] {
-  const files = compare.files ?? [];
+  // A base that has not moved has nothing to list, so only there may `files` be absent.
+  const files =
+    side === 'base' && compare.total_commits === 0 && compare.files === undefined
+      ? []
+      : requireFiles(compare.files, `the ${side} diff`);
   if (files.length >= COMPARE_MAX_FILES) {
     throw new Error(
       `${side} diff lists ${files.length} files, at the compare API's ${COMPARE_MAX_FILES}-file cap`,
@@ -102,16 +116,17 @@ function compareFiles(compare: CompareResponse, side: string): readonly ApiFile[
 /**
  * The PR's patch in the shape `git diff --unified=0` emits, as far as the
  * breaking-diff detectors read it: a `diff --git` header per file, then its hunks.
- * A file with changed lines but no `patch` (GitHub omits it for oversized diffs)
- * fails closed. A file with no changed lines and no patch — a binary or a pure
- * rename — keeps only its header, which is all `git diff` gives the detectors too.
+ * A file with no `patch` (GitHub omits it for oversized diffs) fails closed unless
+ * the API reports it has no changed lines (`changes: 0`) — a binary or a pure
+ * rename, which keeps only its header, all `git diff` gives the detectors too. A
+ * missing `changes` is unknown, not zero, so it fails closed as well.
  */
 function synthesizePatch(files: readonly ApiFile[]): string {
   return files
     .map((f) => {
       const header = `diff --git a/${f.previous_filename ?? f.filename} b/${f.filename}`;
       if (f.patch !== undefined) return `${header}\n${f.patch}\n`;
-      if ((f.changes ?? 0) > 0) {
+      if (f.changes !== 0) {
         throw new Error(`the compare API omitted the patch for ${f.filename}`);
       }
       return `${header}\n`;
@@ -195,6 +210,14 @@ export function makeApiGitRunner({ repo, api, concurrency = 8 }: ApiGitRunnerOpt
 
   async function loadPrFiles(c: Comparison): Promise<readonly ApiFile[]> {
     const pr = await get<CompareResponse>(`repos/${repo}/compare/${c.tip}...${c.head}`);
+    // With several merge bases (a criss-cross history) the two compares can pick
+    // different ones; the PR side would then be diffed from another point.
+    if (pr.merge_base_commit.sha !== c.mergeBase) {
+      throw new Error(
+        `the PR and base compares disagree on the merge base ` +
+          `(${pr.merge_base_commit.sha} vs ${c.mergeBase})`,
+      );
+    }
     return compareFiles(pr, 'PR');
   }
 
@@ -208,7 +231,7 @@ export function makeApiGitRunner({ repo, api, concurrency = 8 }: ApiGitRunnerOpt
     // `git log --name-only` lists no files for a merge commit; neither do we.
     if ((commit.parents?.length ?? 1) > 1) return `\0${commit.sha}\n`;
     const full = await get<{ files?: readonly ApiFile[] }>(`repos/${repo}/commits/${commit.sha}`);
-    const files = (full.files ?? []).map((f) => f.filename);
+    const files = requireFiles(full.files, `base commit ${commit.sha}`).map((f) => f.filename);
     if (files.length >= COMMIT_MAX_FILES && !files.some(isCiPath)) {
       throw new Error(
         `base commit ${commit.sha} lists ${files.length} files, at the commit API's ` +

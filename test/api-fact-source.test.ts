@@ -346,6 +346,52 @@ describe('the API fact source fails closed', () => {
     ).rejects.toThrow(/300-file cap/);
   });
 
+  it('on a PR file with no patch whose changed-line count is missing', async () => {
+    await expect(
+      gatherWith((r) => {
+        Object.assign(r[prCompare] as object, { files: [{ filename: 'package.json' }] });
+      }),
+    ).rejects.toThrow(/omitted the patch for package\.json/);
+  });
+
+  for (const [side, path] of [
+    ['base', baseCompare],
+    ['PR', prCompare],
+  ] as const) {
+    it(`on a ${side} compare with no file list`, async () => {
+      await expect(
+        gatherWith((r) => {
+          delete (r[path] as { files?: unknown }).files;
+        }),
+      ).rejects.toThrow(`no file list for the ${side} diff`);
+    });
+  }
+
+  it('accepts a base compare with no file list when the base has not moved', async () => {
+    const scenario: Scenario = { ...stale, mergeBase: 'TIP', baseCommits: [], baseFiles: [] };
+    const responses = apiResponses(scenario);
+    delete (responses[baseCompare] as { files?: unknown }).files;
+    const git = makeApiGitRunner({ repo: REPO, api: fakeApi(responses) });
+    const facts = await gatherMergeSafetyFacts(meta, { ...probes, git });
+    expect(facts.isCurrent).toBe(true);
+  });
+
+  it('on a base commit with no file list', async () => {
+    await expect(
+      gatherWith((r) => {
+        r[`repos/${REPO}/commits/sha-fix`] = { sha: 'sha-fix' };
+      }),
+    ).rejects.toThrow(/no file list for base commit sha-fix/);
+  });
+
+  it('when the PR compare picks a different merge base (criss-cross history)', async () => {
+    await expect(
+      gatherWith((r) => {
+        Object.assign(r[prCompare] as object, { merge_base_commit: { sha: 'OTHER' } });
+      }),
+    ).rejects.toThrow(/disagree on the merge base \(OTHER vs BASE\)/);
+  });
+
   it('on a failed API read', async () => {
     await expect(
       gatherWith((r) => {
