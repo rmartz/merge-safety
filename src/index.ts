@@ -48,6 +48,7 @@ export {
 export {
   evaluateMergeSafety,
   errorMergeSafetyDecision,
+  failingBaseChecks,
   type BaseCheckRun,
   type MergeSafetyDecision,
   type MergeSafetyFacts,

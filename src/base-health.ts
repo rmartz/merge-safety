@@ -105,3 +105,19 @@ export function failingFallbackBaseChecks(checks: readonly BaseCheckRun[]): stri
     )
     .map((c) => c.name);
 }
+
+/**
+ * The base checks base-health counts as failing, the way the verdict judges them:
+ * the failing **required** checks when the base declares any, else the
+ * failing-Actions fallback. A caller that caches verdicts (a hosted App) can key
+ * on this set: a check going from pending to green, or a non-required check
+ * finishing, leaves it unchanged, so it can't change the verdict.
+ */
+export function failingBaseChecks(
+  checks: readonly BaseCheckRun[],
+  requiredContexts: readonly string[] | null,
+): string[] {
+  return requiredContexts && requiredContexts.length > 0
+    ? failingRequiredBaseChecks(checks, requiredContexts)
+    : failingFallbackBaseChecks(checks);
+}

@@ -46,6 +46,12 @@ const decision = evaluateMergeSafety(facts);
 
 Create one API runner per evaluation: it caches the comparison it loads.
 
+A caller that caches verdicts can tell when a base event can't change one with
+`failingBaseChecks(checks, required)`. It returns the base checks base health
+counts as failing, judged exactly as the verdict judges them. A required check
+going from pending to green, or a non-required check finishing, leaves the set
+unchanged.
+
 ## How the API source answers each query
 
 | `git` query                                    | REST source                                                              |
