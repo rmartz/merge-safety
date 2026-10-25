@@ -95,6 +95,7 @@ export const HOTFIX_LABEL = 'hotfix';
 // file past the 480-line `max-lines` cap. Re-exported so `merge-safety.js` stays
 // the single import surface for everything the verdict consumes.
 export {
+  failingBaseChecks,
   failingFallbackBaseChecks,
   failingRequiredBaseChecks,
   isFailingCiConclusion,

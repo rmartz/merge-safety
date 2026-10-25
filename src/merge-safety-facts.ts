@@ -8,8 +8,7 @@
 import { boundedRun } from './lib/bounded-subprocess.js';
 import { breakingDiffSignals } from './breaking-diff.js';
 import {
-  failingFallbackBaseChecks,
-  failingRequiredBaseChecks,
+  failingBaseChecks as classifyFailingBaseChecks,
   isBreakingCommitMessage,
   isBreakingTitle,
   isCiCommitMessage,
@@ -176,10 +175,7 @@ export async function gatherMergeSafetyFacts(
   const baseBranch = baseBranchName(baseRef);
   const checks = await baseChecks(baseTip);
   const required = await requiredChecks(baseBranch);
-  const failingBaseChecks =
-    required && required.length > 0
-      ? failingRequiredBaseChecks(checks, required)
-      : failingFallbackBaseChecks(checks);
+  const failingBaseChecks = classifyFailingBaseChecks(checks, required);
 
   // Capture each base commit's SHA (`%H`) alongside its body (`%B`) so a triggering
   // commit can be named in the report; `-z` NUL-terminates records for a clean split.
