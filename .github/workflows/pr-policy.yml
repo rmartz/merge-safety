@@ -5,10 +5,12 @@ name: pr-policy
 # matching commit status) and owns the `CI approval needed` label. The checks are
 # listed in rmartz/pr-policy's docs/checks/index.md.
 #
-# skip-uat: this repo has nothing to user-test, so the UAT gate is off. It is set
-# here, in the default-branch caller, so a PR can't switch off a gate it would
-# otherwise wait on. pr-lifecycle.yml carries the same setting (`uat: 'off'`);
-# skip-uat goes once pr-policy-action drops it (rmartz/pr-policy#85).
+# skip-uat: this repo turns the UAT gate off by choice. What it ships is
+# user-facing to its consumers; this is a decision to skip UAT, not a claim that
+# there is nothing to user-test. It is set here, in the default-branch caller, so
+# a PR can't switch off a gate it would otherwise wait on. pr-lifecycle.yml
+# carries the same setting (`uat: 'off'`); skip-uat goes once pr-policy-action
+# drops it (rmartz/pr-policy#85).
 #
 # pull_request_target is safe here only because nothing checks out or runs the
 # PR's code; the Action reads everything through the API. It is needed so fork
