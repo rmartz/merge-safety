@@ -91,7 +91,8 @@ jobs:
           # labels only.
           app-client-id: ${{ secrets.PR_LIFECYCLE_CLIENT_ID }}
           app-private-key: ${{ secrets.PR_LIFECYCLE_PRIVATE_KEY }}
-          # Nothing here to user-test (matches pr-policy.yml's skip-uat): every
-          # PR is `no UAT needed`. Quoted: YAML 1.1 reads a bare off as false.
+          # UAT is off for this repo by choice (matches pr-policy.yml's skip-uat);
+          # the library it ships is still user-facing. Every PR is `no UAT
+          # needed`. Quoted: YAML 1.1 reads a bare off as false.
           uat: 'off'
           arm-auto-merge: false
