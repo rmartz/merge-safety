@@ -217,6 +217,20 @@ export function materialTestChanges(diffText: string): string[] {
 }
 
 /**
+ * Whether any detector reads the hunks under this `diff --git` header: a
+ * dependency manifest ({@link dependencyChanges}) or a test file
+ * ({@link materialTestChanges}). Every other file contributes only its header,
+ * so a source that cannot supply its hunks (the API source, for an oversized
+ * lockfile) loses nothing by emitting the header alone. Classifies the same
+ * header line the detectors do, so the two cannot drift apart.
+ */
+export function breakingDiffReadsHunks(diffGitLine: string): boolean {
+  if (dependencyFileKind(diffGitLine) !== null) return true;
+  const file = DIFF_HEADER_PATH_RE.exec(diffGitLine)?.[1];
+  return file !== undefined && TEST_FILE_RE.test(file);
+}
+
+/**
  * Every breaking signal the PR's own diff carries, in a stable order. An empty
  * array means the diff says nothing — the title `!` marker is the only declared
  * input, and the caller folds it in.

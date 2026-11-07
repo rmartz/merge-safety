@@ -29,6 +29,8 @@ interface ScenarioFile {
   previous?: string;
   patch?: string;
   changes?: number;
+  /** The API leaves `patch` out (an oversized diff) though `git diff` has it. */
+  apiOmitsPatch?: boolean;
 }
 
 /**
@@ -91,7 +93,7 @@ function apiResponses(s: Scenario): Record<string, unknown> {
         filename: f.filename,
         previous_filename: f.previous,
         changes: f.changes ?? (f.patch === undefined ? 0 : 1),
-        patch: f.patch,
+        patch: f.apiOmitsPatch ? undefined : f.patch,
       })),
     },
   };
@@ -247,6 +249,22 @@ const scenarios: { name: string; scenario: Scenario; meta?: Partial<PrMergeMeta>
       ],
     },
   },
+  {
+    name: 'an oversized lockfile whose patch the API omitted, changed on both sides',
+    scenario: {
+      ...stale,
+      baseCommits: [{ sha: 'sha-fix', message: 'fix: small', files: ['pnpm-lock.yaml'] }],
+      baseFiles: ['pnpm-lock.yaml'],
+      prFiles: [
+        {
+          filename: 'pnpm-lock.yaml',
+          patch: '@@ -1 +1 @@\n-  zod: 3.2.0\n+  zod: 4.0.0',
+          changes: 40_000,
+          apiOmitsPatch: true,
+        },
+      ],
+    },
+  },
 ];
 
 describe('the API fact source agrees with the git fact source', () => {
@@ -273,6 +291,11 @@ describe('the API fact source agrees with the git fact source', () => {
     const ciPaths = scenarios[4]?.scenario as Scenario;
     const ci = await gatherMergeSafetyFacts(meta, { ...probes, git: apiFor(ciPaths) });
     expect(ci.baseCiCommits.map((c) => c.sha)).toEqual(['sha-perf', 'sha-feat']);
+
+    // An omitted lockfile patch still yields the overlap, from the file names.
+    const lockfile = scenarios.at(-1)?.scenario as Scenario;
+    const lock = await gatherMergeSafetyFacts(meta, { ...probes, git: apiFor(lockfile) });
+    expect(lock.overlappingFiles).toEqual(['pnpm-lock.yaml']);
   });
 
   it('reads each base commit once, and skips merge commits', async () => {
@@ -328,14 +351,23 @@ describe('the API fact source fails closed', () => {
     ).rejects.toThrow(/PR diff lists 300 files/);
   });
 
-  it('on a changed PR file whose patch the API omitted', async () => {
-    await expect(
-      gatherWith((r) => {
-        Object.assign(r[prCompare] as object, {
-          files: [{ filename: 'dist/huge.js', changes: 40_000 }],
-        });
-      }),
-    ).rejects.toThrow(/omitted the patch for dist\/huge\.js/);
+  for (const filename of ['package.json', 'requirements-dev.txt', 'test/huge.test.ts']) {
+    it(`on a changed ${filename} whose patch the API omitted`, async () => {
+      await expect(
+        gatherWith((r) => {
+          Object.assign(r[prCompare] as object, { files: [{ filename, changes: 40_000 }] });
+        }),
+      ).rejects.toThrow(`omitted the patch for ${filename}`);
+    });
+  }
+
+  it('accepts an omitted patch for a file no breaking-diff detector reads', async () => {
+    const facts = await gatherWith((r) => {
+      Object.assign(r[prCompare] as object, {
+        files: [{ filename: 'pnpm-lock.yaml', changes: 40_000 }, { filename: 'dist/huge.js' }],
+      });
+    });
+    expect(facts.prIsBreaking).toBe(false);
   });
 
   it(`on a base commit at the ${COMMIT_MAX_FILES}-file commit cap with no CI path seen`, async () => {
