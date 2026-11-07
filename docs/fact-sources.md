@@ -86,8 +86,13 @@ data:
 - a compare or commit response has **no `files` list** at all (GitHub drops it for
   a diff too expensive to generate). The one exception is a base compare for a
   base that has not moved, which has nothing to list;
-- a PR file has **no `patch`** (GitHub omits it for an oversized diff), unless the
-  API reports `changes: 0`. Such a file, a binary or a pure rename, is kept with
+- a PR file has **no `patch`** (GitHub omits it for an oversized diff) **and** a
+  breaking-diff detector reads its hunks — a dependency manifest (`package.json`,
+  `requirements*.txt`) or a test file (`breakingDiffReadsHunks`). Any other file
+  (a lockfile, a bundle) is kept with only its header: the detectors skip its
+  lines anyway, and its name still reaches the file-overlap and CI-path facts
+  through the `--name-only` file lists. A detector-read file is also accepted when
+  the API reports `changes: 0`. Such a file, a binary or a pure rename, is kept with
   only its header, which is all `git diff --unified=0` gives the detectors for it
   too. A missing `changes` is unknown, not zero;
 - the two compares report **different merge bases**, as a criss-cross history with

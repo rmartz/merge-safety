@@ -14,8 +14,10 @@
  *
  * The compare API truncates silently (250 commits, 300 files) and omits `patch`
  * for oversized files. Each of those **fails closed** by throwing, so the caller
- * reports `Could not evaluate` rather than a verdict built on partial data.
+ * reports `Could not evaluate` rather than a verdict built on partial data — except
+ * an omitted patch for a file no breaking-diff detector reads, which loses nothing.
  */
+import { breakingDiffReadsHunks } from './breaking-diff.js';
 import { baseBranchName, isCiPath, type GitRunner } from './merge-safety-facts.js';
 
 /**
@@ -116,17 +118,20 @@ function compareFiles(compare: CompareResponse, side: string): readonly ApiFile[
 /**
  * The PR's patch in the shape `git diff --unified=0` emits, as far as the
  * breaking-diff detectors read it: a `diff --git` header per file, then its hunks.
- * A file with no `patch` (GitHub omits it for oversized diffs) fails closed unless
- * the API reports it has no changed lines (`changes: 0`) — a binary or a pure
- * rename, which keeps only its header, all `git diff` gives the detectors too. A
- * missing `changes` is unknown, not zero, so it fails closed as well.
+ * A file with no `patch` (GitHub omits it for oversized diffs) keeps only its
+ * header when no detector reads its hunks (a lockfile, a bundle): its name still
+ * reaches the file-overlap and CI-path facts through `--name-only`, and the
+ * detectors would skip its lines anyway. A file a detector does read fails closed
+ * unless the API reports it has no changed lines (`changes: 0`) — a binary or a
+ * pure rename, which keeps only its header, all `git diff` gives the detectors
+ * too. A missing `changes` is unknown, not zero, so it fails closed as well.
  */
 function synthesizePatch(files: readonly ApiFile[]): string {
   return files
     .map((f) => {
       const header = `diff --git a/${f.previous_filename ?? f.filename} b/${f.filename}`;
       if (f.patch !== undefined) return `${header}\n${f.patch}\n`;
-      if (f.changes !== 0) {
+      if (f.changes !== 0 && breakingDiffReadsHunks(header)) {
         throw new Error(`the compare API omitted the patch for ${f.filename}`);
       }
       return `${header}\n`;

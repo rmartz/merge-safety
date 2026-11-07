@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  breakingDiffReadsHunks,
   breakingDiffSignals,
   majorVersionBumps,
   materialTestChanges,
@@ -180,5 +181,28 @@ describe('breakingDiffSignals', () => {
       'material-test-changes',
     ]);
     expect(signals.find((s) => s.kind === 'material-test-changes')?.detail).toEqual(['a.test.ts']);
+  });
+});
+
+describe('breakingDiffReadsHunks', () => {
+  const header = (path: string) => `diff --git a/${path} b/${path}`;
+
+  it.each([
+    'package.json',
+    'apps/web/package.json',
+    'requirements-dev.txt',
+    'src/a.test.ts',
+    'test_x.py',
+  ])('is true for %s, whose hunks a detector reads', (path) =>
+    expect(breakingDiffReadsHunks(header(path))).toBe(true),
+  );
+
+  it.each(['pnpm-lock.yaml', 'package-lock.json', 'dist/huge.js', 'src/a.ts'])(
+    'is false for %s, which contributes only its header',
+    (path) => expect(breakingDiffReadsHunks(header(path))).toBe(false),
+  );
+
+  it('reads the pre-image path of a rename too, as the manifest detector does', () => {
+    expect(breakingDiffReadsHunks('diff --git a/package.json b/package.old.json')).toBe(true);
   });
 });
