@@ -53,6 +53,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: rmartz/merge-safety-action@44f510cfd407794e17321ffe8fb1edf041af5dcb # v0.1.4
+      - uses: rmartz/merge-safety-action@fa7acebc2802a2858b15a9196e26a14b1046149f # v0.1.5
         with:
           pr: ${{ inputs.pr }}
