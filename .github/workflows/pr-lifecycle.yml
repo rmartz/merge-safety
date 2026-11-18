@@ -83,7 +83,7 @@ jobs:
         github.event.workflow_run.head_sha || github.event.check_suite.head_sha }}
       cancel-in-progress: true
     steps:
-      - uses: rmartz/pr-lifecycle-action@675fe64a1c3f9a1fe474b19ab781b0c1347115cb # v4.4.3
+      - uses: rmartz/pr-lifecycle-action@7609e77716baa6859c190c0877c0ea266afa0473 # v5.1.0
         with:
           # The action creates its real-actor token from the rmartz-pr-lifecycle
           # App to post the pr-lifecycle/sign-off status (arming is off). Both are
