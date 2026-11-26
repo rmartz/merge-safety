@@ -41,7 +41,7 @@ GitHub App with no checkout: `gatherMergeSafetyFacts` with the API-backed
 
 ## Requirements
 
-- Node.js >= 20.11
+- Node.js >= 26
 - pnpm 9 (pinned via `packageManager`)
 
 Consuming repos need neither — the action runs the published CLI on a

@@ -59,7 +59,7 @@ on:
         description: Node.js version to run under.
         type: string
         required: false
-        default: '22'
+        default: '26'
       caller-workflow:
         description: >-
           The consumer's caller workflow filename, which the invalidate fan-out
