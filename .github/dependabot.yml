@@ -45,10 +45,10 @@ updates:
       include: scope
     ignore:
       # @types/node tracks the Node runtime's major, which Dependabot never bumps
-      # (the setup action's `node-version: 24`, the reusable workflow's
-      # `node-version` input default, `engines.node`). A lone types major would
-      # type-check APIs the runtime lacks, so it moves by hand with the runtime
-      # upgrade. Minors and patches still flow.
+      # (the setup action's `node-version`, release.yml's `node-version`, the
+      # reusable workflow's `node-version` input default, `engines.node`). A
+      # lone types major would type-check APIs the runtime lacks, so it moves by
+      # hand with the runtime upgrade. Minors and patches still flow.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
     groups:
