@@ -112,7 +112,7 @@ function parseBaseCommits(logOut: string): { sha: string; message: string }[] {
 /**
  * Paths whose change is a CI change regardless of the commit/PR title (#67): the
  * workflows and local composite actions. Mirrors the coordinator's path-based
- * `_pr_needs_branch_update` trigger (rmartz/dotfiles#1581), which lets a
+ * `_pr_needs_branch_update` trigger, which lets a
  * release-typed PR change CI without a `ci` prefix. A shipped `workflow_call`
  * workflow is deliberately included — an extra sibling rebase after one merges is
  * unnecessary but harmless, and it avoids parsing triggers.

@@ -10,7 +10,7 @@
  * a diff, so the check derives the fact itself; the title `!` marker is the only
  * declared input alongside it — the label is never read.
  *
- * Ported from `claude/scripts/breaking_change.py` in `rmartz/dotfiles`
+ * Ported from the PR coordinator's Python `breaking_change.py`
  * (`has_major_version_bump` / `has_sensitive_package_bump` /
  * `has_material_test_changes`). Each returns the *specific* packages or files that
  * tripped it rather than a bare boolean, so the check-run can name them — the same
