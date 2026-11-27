@@ -4,9 +4,8 @@
  *
  * The counterpart to `breaking-diff.ts`: that module reads a PR's *diff*, this
  * one reads its *subject*. Together they are the TypeScript home of what
- * `claude/scripts/breaking_change.py` does in the coordinator, and keeping them
- * as two small pure modules is what lets the predicates have exactly one
- * implementation each (rmartz/dotfiles#1524).
+ * `breaking_change.py` does in the coordinator, and keeping them as two small
+ * pure modules is what lets the predicates have exactly one implementation each.
  *
  * Extracted from `merge-safety.ts` when #53 pushed that file past its 480-line
  * `max-lines` cap.

@@ -76,7 +76,7 @@ so it lives only in the git tag; the action pins the version in its own lockfile
 **Version mapping (v0):** `feat:` → minor; `fix:`/`perf:` → patch. Pre-1.0, a
 breaking change (`!`) is **capped at minor** so it can't auto-jump to `1.0.0`;
 leaving v0 (cutting `1.0.0`) is a deliberate manual act. Dependabot uses the
-split-prefix convention (rmartz/ai#82): a **production** bump arrives as
+split-prefix convention: a **production** bump arrives as
 `fix(deps):` → patch (it ships to users); **dev** (`chore(deps):`) and
 **github-actions** (`chore(github-actions):`) bumps are release-less — as a
 zero-runtime-dependency package, all Dependabot bumps are dev-only in practice.

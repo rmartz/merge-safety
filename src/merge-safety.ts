@@ -3,10 +3,10 @@
  * first be brought current against its base branch and re-run through CI?"
  *
  * This is the coordinator's `_pr_needs_branch_update` decision, lifted into a
- * pure, side-effect-free function so it can be shared by two callers: PR Shepherd
- * (which merges) and the `merge-safety` GitHub check (which *surfaces* the
+ * pure, side-effect-free function so it can be shared by two callers: the PR
+ * merger (which merges) and the `merge-safety` GitHub check (which *surfaces* the
  * verdict as a required status so it's visible on the PR and can gate auto-merge).
- * It knows nothing about posting, check-runs, or PR Shepherd's gate labels — it
+ * It knows nothing about posting, check-runs, or the merger's gate labels — it
  * maps gathered *facts* to a verdict, and the caller owns the emission channel.
  *
  * The rule (a PR **must be brought current** when it is not already current AND):
