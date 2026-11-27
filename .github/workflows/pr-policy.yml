@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: rmartz/pr-policy-action@653c22e683c7a5034b0d72a6b4e7d40fe24f6ae9 # v2.0.0
+      - uses: rmartz/pr-policy-action@dd35259dff6365173ab1789e620a48155a87c4b1 # v2.0.1
         with:
           pr: ${{ github.event.pull_request.number }}
           # Retitle a Dependabot linter/formatter bump to ci(...), the type the
