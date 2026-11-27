@@ -50,7 +50,8 @@ task:
 ## Repository conformance
 
 This repo is held to the shared
-[repository checklist](https://github.com/rmartz/ai/blob/main/docs/guidance/repository-checklist.md),
+repository checklist (`~/.claude/knowledge/guidance/repository-checklist.md` in
+the agent knowledge base),
 and it **self-manages** its own config: fix conformance gaps directly here, in a
 PR. Bootstrap (`ai-ensure-*`) is a one-time new-repo **starter**, not an ongoing
 manager — do not defer a fix to a bootstrap re-run, and do not treat a `.github/`
@@ -149,8 +150,7 @@ Most are enforced by eslint; the intent:
   a **breaking change (`!`) is capped at a minor bump** (the
   `{ "breaking": true, "release": "minor" }` rule) so an accidental `!` can't
   auto-jump to `1.0.0`. `docs:` / `chore:` / `style:` / `refactor:` / `test:` /
-  `ci:` / `build:` do not release. **Dependabot follows the split-prefix convention
-  (rmartz/ai#82):** a **production** bump arrives as `fix(deps):` → patch (it ships
+  `ci:` / `build:` do not release. **Dependabot follows the split-prefix convention:** a **production** bump arrives as `fix(deps):` → patch (it ships
   to users), while a **dev-dependency** bump arrives as `chore(deps):` and a
   **github-actions** bump as `chore(github-actions):` — both release-less, since
   neither reaches the shipped artifact. (There is deliberately **no** `chore(deps)` →

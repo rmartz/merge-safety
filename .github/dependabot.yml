@@ -37,7 +37,7 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      # Split by dependency type (rmartz/ai#82): a production bump ships to
+      # Split by dependency type: a production bump ships to
       # users, so it is a `fix` that cuts a release; a dev-dependency bump never
       # reaches the shipped artifact, so it is a release-less `chore`.
       prefix: fix
