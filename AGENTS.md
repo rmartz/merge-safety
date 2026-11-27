@@ -52,8 +52,8 @@ task:
 This repo is held to the shared repository checklist
 (`~/.claude/knowledge/guidance/repository-checklist.md` in the agent knowledge
 base), and it **self-manages** its own config: fix conformance gaps directly
-here, in a PR. Bootstrap (`ai-ensure-*`) is a one-time new-repo **starter**, not an ongoing
-manager — do not defer a fix to a bootstrap re-run, and do not treat a `.github/`
+here, in a PR. Bootstrap (`ai-ensure-*`) is a one-time new-repo **starter**, not
+an ongoing manager — do not defer a fix to a bootstrap re-run, and do not treat a `.github/`
 file as off-limits just because bootstrap once seeded it.
 
 - **Hygiene arrives the self-updating way:** this repo consumes
